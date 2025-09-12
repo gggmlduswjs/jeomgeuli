@@ -1,8 +1,39 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import BrailleRow from "../components/BrailleRow";
 import { convertBraille } from "../lib/api";
-import type { Cell } from "../lib/brailleLocal";
+import type { Cell } from "../lib/braille";
+
+function Dot({ on }: { on: boolean }) {
+  return (
+    <span 
+      className={`inline-block w-5 h-5 rounded-full mx-0.5 my-0.5 border-2 transition-all duration-200 ${
+        on 
+          ? "bg-blue-600 border-blue-600 shadow-md" 
+          : "bg-gray-100 border-gray-300"
+      }`} 
+    />
+  );
+}
+
+function CellView({ c }: { c: Cell }) {
+  const [a,b,c2,d,e,f] = c || [0,0,0,0,0,0];
+  return (
+    <div className="inline-flex flex-col px-3 py-2 rounded-lg border-2 bg-white shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex">
+        <Dot on={!!a}/>
+        <Dot on={!!d}/>
+      </div>
+      <div className="flex">
+        <Dot on={!!b}/>
+        <Dot on={!!e}/>
+      </div>
+      <div className="flex">
+        <Dot on={!!c2}/>
+        <Dot on={!!f}/>
+      </div>
+    </div>
+  );
+}
 
 export default function Quiz(){
   const { mode } = useParams(); // char|word|sentence
@@ -55,7 +86,9 @@ export default function Quiz(){
         점자를 촉각으로 확인한 뒤 정답을 말씀/입력하세요.
       </section>
       <section className="rounded-2xl bg-white shadow p-6 text-center">
-        <BrailleRow cells={cells}/>
+        <div className="flex flex-wrap justify-center gap-2 mb-4">
+          {cells.map((c, idx) => <CellView key={idx} c={c} />)}
+        </div>
         <div className="mt-4 text-gray-500">곧 질문합니다</div>
       </section>
 

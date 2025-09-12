@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import LearnStep from "../pages/LearnStep";
+import FreeConvert from "../pages/FreeConvert";
 import Quiz from "../pages/Quiz";
 import Review from "../pages/Review";
 import Explore from "../pages/Explore";
@@ -36,7 +37,10 @@ export default function App(){
       <Routes>
         <Route path="/" element={<Home/>}/>
         <Route path="/learn" element={<LearnIndex/>}/>
-        <Route path="/learn/:kind" element={<LearnStep/>}/>
+        <Route path="/learn/char" element={<LearnStep/>}/>
+        <Route path="/learn/word" element={<LearnStep/>}/>
+        <Route path="/learn/sentence" element={<LearnStep/>}/>
+        <Route path="/learn/free" element={<FreeConvert/>}/>
         <Route path="/quiz/:kind" element={<Quiz/>}/>
         <Route path="/review" element={<Review/>}/>
         <Route path="/explore" element={<Explore/>}/>

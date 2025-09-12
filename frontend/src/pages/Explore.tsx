@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import AppShellMobile from "../components/AppShellMobile";
 import { fetchNews, convertBraille } from "../lib/api";
+import useBrailleBLE from "../hooks/useBrailleBLE";
 import type { Cell } from "../lib/braille";
 
 function Dot({ on }: { on:boolean }) {
@@ -28,6 +29,8 @@ export default function Explore(){
   const [chips, setChips] = useState<{word:string, cells:Cell[]}[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string|null>(null);
+  const [bleConnected, setBleConnected] = useState(false);
+  const { connect, sendCells } = useBrailleBLE();
 
   const ask = async () => {
     setLoading(true); setErr(null);
@@ -43,9 +46,71 @@ export default function Explore(){
     }finally{ setLoading(false); }
   };
 
+  const handleConnectBLE = async () => {
+    try {
+      await connect();
+      setBleConnected(true);
+      alert("점자 디스플레이가 연결되었습니다!");
+    } catch (e) {
+      alert("점자 디스플레이 연결에 실패했습니다. 디바이스가 켜져 있는지 확인해주세요.");
+    }
+  };
+
+  const handleOutputToBraille = async (text: string) => {
+    if (!bleConnected) {
+      alert("먼저 점자 디스플레이를 연결해주세요.");
+      return;
+    }
+    try {
+      const cells = await convertBraille(text);
+      const boolCells = cells.map(cell => cell.map(dot => dot === 1));
+      await sendCells(boolCells);
+      alert(`"${text}"를 점자 디스플레이로 출력했습니다.`);
+    } catch (e) {
+      alert("점자 출력에 실패했습니다.");
+    }
+  };
+
+  const handleOutputKeywords = async () => {
+    if (!bleConnected) {
+      alert("먼저 점자 디스플레이를 연결해주세요.");
+      return;
+    }
+    try {
+      for (const chip of chips) {
+        const boolCells = chip.cells.map(cell => cell.map(dot => dot === 1));
+        await sendCells(boolCells);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+      }
+      alert("모든 키워드를 점자 디스플레이로 출력했습니다.");
+    } catch (e) {
+      alert("키워드 출력에 실패했습니다.");
+    }
+  };
+
   return (
     <AppShellMobile title="정보 탐색">
       <div className="p-4 space-y-4">
+        {/* 점자 디스플레이 연결 상태 */}
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${bleConnected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className="text-sm font-medium">
+              점자 디스플레이: {bleConnected ? '연결됨' : '연결 안됨'}
+            </span>
+          </div>
+          <button 
+            onClick={handleConnectBLE}
+            className={`px-3 py-1 rounded-lg text-sm ${
+              bleConnected 
+                ? 'bg-green-100 text-green-700' 
+                : 'bg-blue-100 text-blue-700'
+            }`}
+          >
+            {bleConnected ? '연결됨' : '연결하기'}
+          </button>
+        </div>
+
         <div className="flex gap-2">
           <input className="flex-1 rounded-2xl border px-4 py-2" value={q} onChange={e=>setQ(e.target.value)} placeholder="무엇을 도와드릴까요?" />
           <button onClick={ask} className="rounded-2xl bg-blue-600 text-white px-4 py-2">질문</button>
@@ -53,7 +118,15 @@ export default function Explore(){
 
         {chips.length>0 && (
           <div className="rounded-2xl border bg-white p-3">
-            <div className="text-sm text-gray-500 mb-2">핵심 키워드</div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-gray-500">핵심 키워드</div>
+              <button 
+                onClick={handleOutputKeywords}
+                className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-200"
+              >
+                📱 점자로 출력
+              </button>
+            </div>
             {chips.map((c,i)=><Chip key={i} word={c.word} cells={c.cells} />)}
           </div>
         )}
@@ -64,9 +137,25 @@ export default function Explore(){
         <div className="space-y-3">
           {items.map((n,idx)=>(
             <div key={idx} className="rounded-2xl border bg-white p-4">
-              <div className="font-semibold mb-1">{n.title}</div>
-              <div className="text-gray-600 text-sm">{n.summary}</div>
-              {n.link ? <a className="text-blue-600 text-sm underline" href={n.link} target="_blank" rel="noreferrer">원문 보기</a> : null}
+              <div className="flex items-start justify-between mb-2">
+                <div className="font-semibold flex-1">{n.title}</div>
+                <button 
+                  onClick={() => handleOutputToBraille(n.title)}
+                  className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg hover:bg-green-200"
+                >
+                  📱 점자출력
+                </button>
+              </div>
+              <div className="text-gray-600 text-sm mb-2">{n.summary}</div>
+              <div className="flex items-center justify-between">
+                {n.link ? <a className="text-blue-600 text-sm underline" href={n.link} target="_blank" rel="noreferrer">원문 보기</a> : null}
+                <button 
+                  onClick={() => handleOutputToBraille(n.summary)}
+                  className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-200"
+                >
+                  📱 요약 점자출력
+                </button>
+              </div>
             </div>
           ))}
         </div>
