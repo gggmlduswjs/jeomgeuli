@@ -1,227 +1,76 @@
-import React, { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Send, Loader2 } from 'lucide-react'
-import { apiService, ChatResponse } from '../services/api'
-import { useKeywordsStore } from '../store/keywords'
-import MicButton from '../components/MicButton'
-import KeywordChips from '../components/KeywordChips'
-import Card from '../components/Card'
-import BulletList from '../components/BulletList'
-import TTSButton from '../components/TTSButton'
+// src/pages/Explore.tsx
+import React, { useState } from "react";
+import AppShellMobile from "../components/AppShellMobile";
+import { fetchNews, convertBraille } from "../lib/api";
+import type { Cell } from "../lib/braille";
 
-const Explore = () => {
-  const [query, setQuery] = useState('')
-  const [messages, setMessages] = useState<Array<{
-    id: string
-    type: 'user' | 'bot'
-    content: string
-    response?: ChatResponse
-  }>>([])
-  
-  const { addKeywords } = useKeywordsStore()
-
-  const chatMutation = useMutation({
-    mutationFn: (query: string) => apiService.chatAsk(query),
-    onSuccess: (data, query) => {
-      // Add user message
-      const userMessage = {
-        id: `user_${Date.now()}`,
-        type: 'user' as const,
-        content: query
-      }
-      
-      // Add bot response
-      const botMessage = {
-        id: `bot_${Date.now()}`,
-        type: 'bot' as const,
-        content: data.summary,
-        response: data
-      }
-      
-      setMessages(prev => [...prev, userMessage, botMessage])
-      
-      // Add keywords to store
-      if (data.keywords && data.keywords.length > 0) {
-        addKeywords(data.keywords)
-      }
-      
-      // Clear input
-      setQuery('')
-    },
-    onError: (error) => {
-      console.error('Chat error:', error)
-    }
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (query.trim() && !chatMutation.isPending) {
-      chatMutation.mutate(query.trim())
-    }
-  }
-
-  const handleMicTranscript = (transcript: string) => {
-    setQuery(transcript)
-  }
-
-  const handleExampleClick = (exampleQuery: string) => {
-    setQuery(exampleQuery)
-  }
-
-  const examples = [
-    "오늘 뉴스 5개 요약해줘",
-    "블록체인 쉽게 설명해줘", 
-    "GPT-5가 뭐야?",
-    "인공지능의 장단점 알려줘",
-    "날씨 정보 알려줘"
-  ]
-
+function Dot({ on }: { on:boolean }) {
+  return <span className={`inline-block w-3 h-3 rounded-full mx-0.5 border ${on?"bg-blue-500 border-blue-500":"bg-white border-gray-300"}`} />;
+}
+function Chip({ word, cells }: { word: string; cells: Cell[] }) {
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="grid lg:grid-cols-[360px_1fr] gap-6">
-        {/* Left Panel - Content Display */}
-        <div className="space-y-6">
-          {/* Keyword Chips */}
-          <KeywordChips />
-          
-          {/* Content Display */}
-          <div className="space-y-4">
-            {messages.filter(m => m.type === 'bot' && m.response).map((message) => {
-              const response = message.response!
-              
-              return (
-                <div key={message.id} className="space-y-4">
-                  {/* Summary */}
-                  <div className="card">
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {response.mode === 'news' ? '뉴스 요약' : 
-                         response.mode === 'explain' ? '설명' : '답변'}
-                      </h3>
-                      <TTSButton text={message.content} size="sm" />
-                    </div>
-                    <p className="text-gray-700 leading-relaxed">
-                      {message.content}
-                    </p>
-                  </div>
-                  
-                  {/* Simple Explanation */}
-                  {response.simple && (
-                    <div className="card bg-blue-50">
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-medium text-blue-900">쉬운 말로 설명</h4>
-                        <TTSButton text={response.simple} size="sm" />
-                      </div>
-                      <p className="text-blue-800 leading-relaxed">
-                        {response.simple}
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* Cards for News Mode */}
-                  {response.mode === 'news' && response.cards && (
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-gray-900">뉴스 카드</h4>
-                      {response.cards.map((card, index) => (
-                        <Card
-                          key={index}
-                          title={card.title}
-                          oneLine={card.oneLine}
-                          url={card.url}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Bullets for Explain Mode */}
-                  {response.mode === 'explain' && response.bullets && (
-                    <div>
-                      <h4 className="font-semibold text-gray-900 mb-3">상세 설명</h4>
-                      <BulletList bullets={response.bullets} />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Right Panel - Chat Interface */}
-        <div className="space-y-6">
-          {/* Chat Messages */}
-          <div className="h-96 overflow-y-auto space-y-4 p-4 bg-white rounded-xl border border-gray-200">
-            {messages.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
-                <p className="text-lg font-medium mb-2">정보탐색을 시작해보세요</p>
-                <p className="text-sm">음성이나 텍스트로 질문해보세요</p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`
-                      max-w-xs px-4 py-2 rounded-2xl
-                      ${message.type === 'user' 
-                        ? 'bg-accent-500 text-white rounded-br-md' 
-                        : 'bg-gray-100 text-gray-900 rounded-bl-md'
-                      }
-                    `}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Input Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex space-x-3">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="질문을 입력하거나 음성으로 말해보세요..."
-                className="flex-1 input-field"
-                disabled={chatMutation.isPending}
-              />
-              <MicButton onTranscript={handleMicTranscript} />
-              <button
-                type="submit"
-                disabled={!query.trim() || chatMutation.isPending}
-                className="btn-primary flex items-center space-x-2"
-              >
-                {chatMutation.isPending ? (
-                  <Loader2 size={20} className="animate-spin" />
-                ) : (
-                  <Send size={20} />
-                )}
-              </button>
-            </div>
-          </form>
-
-          {/* Example Queries */}
-          <div className="space-y-3">
-            <h4 className="font-medium text-gray-900">예시 질문</h4>
-            <div className="flex flex-wrap gap-2">
-              {examples.map((example, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleExampleClick(example)}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition-colors duration-200"
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="inline-flex items-center mr-2 mb-2 rounded-full border px-3 py-1 bg-white">
+      <span className="mr-2 text-sm font-medium">{word}</span>
+      <div className="inline-flex">{cells.slice(0,3).map((c, i)=>(
+        <span key={i} className="inline-flex flex-col mx-0.5">
+          <div><Dot on={!!c[0]}/><Dot on={!!c[3]}/></div>
+          <div><Dot on={!!c[1]}/><Dot on={!!c[4]}/></div>
+          <div><Dot on={!!c[2]}/><Dot on={!!c[5]}/></div>
+        </span>
+      ))}</div>
     </div>
-  )
+  );
 }
 
-export default Explore
+export default function Explore(){
+  const [q, setQ] = useState("오늘의 뉴스 5개 요약해줘");
+  const [items, setItems] = useState<{title:string, summary:string, link?:string}[]>([]);
+  const [chips, setChips] = useState<{word:string, cells:Cell[]}[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string|null>(null);
+
+  const ask = async () => {
+    setLoading(true); setErr(null);
+    try{
+      const list = await fetchNews(q);
+      setItems(list);
+      // 제목에서 간단 키워드 3개 추출 → 점자칩
+      const ks = Array.from(new Set(list.map(x => (x.title||"").split(/[ ,:/\-]/)[0]).filter(Boolean))).slice(0,3);
+      const withBraille = await Promise.all(ks.map(async w => ({ word:w, cells: await convertBraille(w) })));
+      setChips(withBraille);
+    }catch(e:any){
+      setErr(e?.message || "요청에 실패했습니다.");
+    }finally{ setLoading(false); }
+  };
+
+  return (
+    <AppShellMobile title="정보 탐색">
+      <div className="p-4 space-y-4">
+        <div className="flex gap-2">
+          <input className="flex-1 rounded-2xl border px-4 py-2" value={q} onChange={e=>setQ(e.target.value)} placeholder="무엇을 도와드릴까요?" />
+          <button onClick={ask} className="rounded-2xl bg-blue-600 text-white px-4 py-2">질문</button>
+        </div>
+
+        {chips.length>0 && (
+          <div className="rounded-2xl border bg-white p-3">
+            <div className="text-sm text-gray-500 mb-2">핵심 키워드</div>
+            {chips.map((c,i)=><Chip key={i} word={c.word} cells={c.cells} />)}
+          </div>
+        )}
+
+        {loading && <div className="text-gray-500">불러오는 중…</div>}
+        {err && <div className="text-red-500">{err}</div>}
+
+        <div className="space-y-3">
+          {items.map((n,idx)=>(
+            <div key={idx} className="rounded-2xl border bg-white p-4">
+              <div className="font-semibold mb-1">{n.title}</div>
+              <div className="text-gray-600 text-sm">{n.summary}</div>
+              {n.link ? <a className="text-blue-600 text-sm underline" href={n.link} target="_blank" rel="noreferrer">원문 보기</a> : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </AppShellMobile>
+  );
+}

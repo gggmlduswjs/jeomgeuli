@@ -1,71 +1,92 @@
-import React from 'react'
-import { Mic, MicOff, Loader2 } from 'lucide-react'
-import { useSTT } from '../hooks/useSTT'
+import React, { useRef, useState } from "react";
 
-interface MicButtonProps {
-  onTranscript: (transcript: string) => void
-  className?: string
-}
+type Props = { 
+  onResult?: (text: string) => void;
+  className?: string;
+};
 
-const MicButton = ({ onTranscript, className = '' }: MicButtonProps) => {
-  const { isListening, startListening, stopListening, error } = useSTT()
+export default function MicButton({ onResult, className = "" }: Props) {
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const recRef = useRef<SpeechRecognition | null>(null);
+
+  const start = () => {
+    // Web Speech API 지원 확인
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn("Speech recognition not supported");
+      onResult?.("");
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "ko-KR";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.continuous = false;
+
+      recognition.onstart = () => {
+        setListening(true);
+        setTranscript("");
+      };
+
+      recognition.onresult = (event: any) => {
+        const text = event.results?.[0]?.[0]?.transcript || "";
+        setTranscript(text);
+        setListening(false);
+        onResult?.(text);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn("Speech recognition error:", event.error);
+        setListening(false);
+        setTranscript("");
+      };
+
+      recognition.onend = () => {
+        setListening(false);
+      };
+
+      recRef.current = recognition;
+      recognition.start();
+    } catch (error) {
+      console.warn("Failed to start speech recognition:", error);
+      setListening(false);
+      onResult?.("");
+    }
+  };
+
+  const stop = () => {
+    if (recRef.current) {
+      recRef.current.stop();
+    }
+    setListening(false);
+  };
 
   const handleClick = () => {
-    if (isListening) {
-      stopListening()
+    if (listening) {
+      stop();
     } else {
-      startListening()
+      start();
     }
-  }
-
-  const handleTranscriptChange = (transcript: string) => {
-    if (transcript) {
-      onTranscript(transcript)
-    }
-  }
-
-  // Listen for transcript changes
-  React.useEffect(() => {
-    if (transcript) {
-      handleTranscriptChange(transcript)
-    }
-  }, [transcript])
+  };
 
   return (
-    <div className={`flex flex-col items-center ${className}`}>
-      <button
-        onClick={handleClick}
-        disabled={!!error}
-        className={`
-          w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200
-          ${isListening 
-            ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse' 
-            : 'bg-primary-500 hover:bg-primary-600 text-white'
-          }
-          ${error ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
-        aria-label={isListening ? '음성 인식 중지' : '음성 인식 시작'}
-      >
-        {isListening ? (
-          <MicOff size={24} />
-        ) : (
-          <Mic size={24} />
-        )}
-      </button>
-      
-      {error && (
-        <p className="text-red-500 text-xs mt-2 text-center max-w-32">
-          {error}
-        </p>
+    <button
+      type="button"
+      onClick={handleClick}
+      className={`w-16 h-16 rounded-full bg-accent text-primary flex items-center justify-center shadow-lg hover:shadow-xl transition-all ${className}`}
+      disabled={listening && !recRef.current}
+    >
+      {listening ? (
+        <div className="w-6 h-6 bg-red-500 rounded-full animate-pulse" />
+      ) : (
+        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
       )}
-      
-      {isListening && (
-        <p className="text-primary-600 text-xs mt-2 text-center">
-          듣고 있습니다...
-        </p>
-      )}
-    </div>
-  )
+    </button>
+  );
 }
-
-export default MicButton

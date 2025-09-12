@@ -1,288 +1,191 @@
-import React, { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { apiService, LearnResponse } from '../services/api'
-import { useReviewStore } from '../store/review'
-import { useTTS } from '../hooks/useTTS'
-import TTSButton from '../components/TTSButton'
-import QuickActions from '../components/QuickActions'
+import { useRef, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import AppShellMobile from "../components/AppShellMobile";
+import BottomBar from "../components/BottomBar";
+import MicButton from "../components/MicButton";
+import { fetchChars } from "../lib/api";
+import useVoiceCommands from "../hooks/useVoiceCommands";
+// 점자 출력 훅을 쓰는 경우만 활성화하세요
+// import useBraille from "../hooks/useBraille";
 
-type LearningMode = 'char' | 'word' | 'sent' | 'free'
+export default function Learn() {
+  const navigate = useNavigate();
 
-const Learn = () => {
-  const [currentMode, setCurrentMode] = useState<LearningMode>('char')
-  const [currentLesson, setCurrentLesson] = useState<LearnResponse | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [testMode, setTestMode] = useState(false)
-  const [testAnswers, setTestAnswers] = useState<string[]>([])
-  const [testResults, setTestResults] = useState<any>(null)
-  
-  const { speak, stop } = useTTS()
-  const { addReviewItem } = useReviewStore()
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [chars, setChars] = useState<any[]>([]);
+  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  const { data: lessonData, isLoading, refetch } = useQuery({
-    queryKey: ['lesson', currentMode],
-    queryFn: () => apiService.getNextLesson(currentMode),
-    enabled: !testMode,
-    onSuccess: (data) => {
-      setCurrentLesson(data)
-      setTestMode(false)
-      setTestAnswers([])
-      setTestResults(null)
+  // const { output: brailleOut } = useBraille(); // 점자 출력 사용 시
+
+  /** TTS: 문자열/배열 모두 안전하게 */
+  const speak = (textOrList?: string | string[]) => {
+    if (!textOrList) return;
+    try {
+      window.speechSynthesis.cancel();
+
+      const list = Array.isArray(textOrList) ? textOrList : [textOrList];
+      const joined = list.filter(Boolean).join(" ");
+      if (!joined) return;
+
+      const u = new SpeechSynthesisUtterance(joined);
+      u.lang = "ko-KR";
+      // 필요하면 속도/피치 조절
+      // u.rate = 1.0; u.pitch = 1.0;
+      u.onerror = () => {};
+      u.onend = () => {};
+      utterRef.current = u;
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn("TTS error:", e);
     }
-  })
+  };
 
-  const testMutation = useMutation({
-    mutationFn: ({ answers, correctAnswers }: { answers: string[], correctAnswers: string[] }) =>
-      apiService.submitTest(currentMode, answers, correctAnswers),
-    onSuccess: (results) => {
-      setTestResults(results)
-      
-      // Add incorrect answers to review
-      results.incorrect_answers.forEach((item: any) => {
-        addReviewItem({
-          type: currentMode,
-          korean: item.question,
-          braille: item.correct,
-          description: '테스트 오답',
-          correct: false
-        })
-      })
-    }
-  })
+  /** 데이터 로딩 */
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setIsLoading(true);
+        const res = await fetchChars(); // { items: any[] }
+        if (!mounted) return;
 
-  const handlePlayTTS = () => {
-    if (isPlaying) {
-      stop()
-      setIsPlaying(false)
-    } else if (currentLesson?.lesson.tts_text) {
-      speak(currentLesson.lesson.tts_text)
-      setIsPlaying(true)
-    }
+        const items = Array.isArray(res?.items) ? res.items : [];
+        setChars(items);
+        if (!items.length) {
+          setError("학습 데이터를 불러올 수 없습니다.");
+        } else {
+          setI(0);
+          setPaused(false);
+        }
+      } catch (e) {
+        if (mounted) setError("학습 데이터를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  const current = chars[i];
+
+  /** 명령 */
+  const prev = () => setI(v => Math.max(0, v - 1));
+  const next = () => {
+    setPaused(false);
+    setI(v => {
+      const nextIdx = Math.min(chars.length - 1, v + 1);
+      // 마지막 다음 → 인덱스로 이동
+      if (nextIdx === v && v === chars.length - 1) {
+        navigate("/learn");
+      }
+      return nextIdx;
+    });
+  };
+  const repeat = () => current?.tts && speak(current.tts);
+  const pause = () => {
+    window.speechSynthesis.cancel();
+    setPaused(true);
+  };
+  const start = () => {
+    setPaused(false);
+    repeat();
+  };
+
+  const { onSpeech } = useVoiceCommands({ next, prev, repeat, pause, start });
+
+  /** 현재 아이템 바뀔 때 자동 낭독 + 점자 출력 */
+  useEffect(() => {
+    if (!current) return;
+    if (!paused) speak(current.tts);
+
+    // 점자 출력 사용 시
+    // try { if (current.char) brailleOut(current.char); } catch {}
+  }, [i, paused, current /*, brailleOut*/]);
+
+  /** 로딩/에러/무자료 처리 */
+  if (isLoading) {
+    return (
+      <AppShellMobile title="자모 학습">
+        <div className="space-y-5 pb-32">
+          <div className="card text-center">
+            <div className="text-ink-500">학습 내용을 불러오는 중...</div>
+          </div>
+        </div>
+      </AppShellMobile>
+    );
+  }
+  if (error) {
+    return (
+      <AppShellMobile title="자모 학습">
+        <div className="space-y-5 pb-32">
+          <div className="card text-center">
+            <div className="text-red-500 mb-4">{error}</div>
+            <button onClick={() => window.location.reload()} className="btn-primary">
+              다시 시도
+            </button>
+          </div>
+        </div>
+      </AppShellMobile>
+    );
+  }
+  if (!current) {
+    return (
+      <AppShellMobile title="자모 학습">
+        <div className="space-y-5 pb-32">
+          <div className="card text-center">
+            <div className="text-ink-500">학습할 내용이 없습니다.</div>
+          </div>
+        </div>
+      </AppShellMobile>
+    );
   }
 
-  const handleStop = () => {
-    stop()
-    setIsPlaying(false)
-  }
-
-  const handleNext = () => {
-    if (testMode && testAnswers.length > 0) {
-      // Submit test
-      const correctAnswers = currentLesson?.test_questions.map(q => q.correct) || []
-      testMutation.mutate({ answers: testAnswers, correctAnswers })
-    } else {
-      // Get next lesson
-      refetch()
-    }
-  }
-
-  const handleRepeat = () => {
-    handlePlayTTS()
-  }
-
-  const handleStartTest = () => {
-    setTestMode(true)
-    setTestAnswers([])
-    setTestResults(null)
-  }
-
-  const handleAnswerSelect = (questionIndex: number, answer: string) => {
-    setTestAnswers(prev => {
-      const newAnswers = [...prev]
-      newAnswers[questionIndex] = answer
-      return newAnswers
-    })
-  }
-
-  const modes: Array<{ key: LearningMode; label: string; description: string }> = [
-    { key: 'char', label: '자모', description: '한글 자모 학습' },
-    { key: 'word', label: '단어', description: '단어 점자 학습' },
-    { key: 'sent', label: '문장', description: '문장 점자 학습' },
-    { key: 'free', label: '자유 변환', description: '자유 텍스트 변환' }
-  ]
+  const isLast = i === chars.length - 1;
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Mode Selection */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">점자학습</h1>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {modes.map((mode) => (
-            <button
-              key={mode.key}
-              onClick={() => setCurrentMode(mode.key)}
-              className={`
-                p-4 rounded-xl border-2 transition-all duration-200 text-left
-                ${currentMode === mode.key 
-                  ? 'border-primary-500 bg-primary-50 text-primary-700' 
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-                }
-              `}
-            >
-              <h3 className="font-semibold text-lg mb-1">{mode.label}</h3>
-              <p className="text-sm text-gray-600">{mode.description}</p>
-            </button>
-          ))}
+    <AppShellMobile title="자모 학습">
+      <div className="space-y-5 pb-32">
+        {/* 진행률 */}
+        <div className="card flex items-center justify-between">
+          <div className="text-ink-500">안내</div>
+          <div className="text-sm text-gray-500">
+            {i + 1} / {chars.length}
+          </div>
+        </div>
+
+        {/* 안내 TTS 텍스트(시각 표시) */}
+        <div className="card">
+          <div className="text-lg">
+            {Array.isArray(current.tts) ? current.tts.join(" ") : current.tts}
+          </div>
+        </div>
+
+        {/* 글자 박스 */}
+        <div className="card text-center">
+          <div className="text-6xl font-bold text-primary mb-4">{current.char}</div>
+          <div className="text-gray-600 mb-2">{current.name}</div>
+          <div className="text-sm text-gray-500">{current.type || "자모"}</div>
+        </div>
+
+        {/* 음성 명령 마이크 */}
+        <div className="flex justify-center pt-4">
+          <MicButton onResult={onSpeech} />
         </div>
       </div>
 
-      {/* Learning Content */}
-      {isLoading ? (
-        <div className="card text-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600">학습 내용을 불러오는 중...</p>
-        </div>
-      ) : currentLesson ? (
-        <div className="space-y-6">
-          {/* Lesson Content */}
-          <div className="card">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  {currentLesson.lesson.korean}
-                </h2>
-                <div className="text-4xl font-mono mb-4 text-primary-600">
-                  {currentLesson.lesson.braille}
-                </div>
-                <p className="text-gray-600 leading-relaxed">
-                  {currentLesson.lesson.description}
-                </p>
-              </div>
-              <TTSButton text={currentLesson.lesson.tts_text} />
-            </div>
-            
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-2">학습 안내:</p>
-              <p className="text-gray-700">{currentLesson.instructions}</p>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <QuickActions
-            onNext={handleNext}
-            onRepeat={handleRepeat}
-            onStop={handleStop}
-            onStart={handlePlayTTS}
-            isPlaying={isPlaying}
-          />
-
-          {/* Test Section */}
-          {!testMode ? (
-            <div className="card text-center">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                학습 테스트
-              </h3>
-              <p className="text-gray-600 mb-6">
-                학습한 내용을 테스트해보세요
-              </p>
-              <button
-                onClick={handleStartTest}
-                className="btn-primary"
-              >
-                테스트 시작하기
-              </button>
-            </div>
-          ) : (
-            <div className="card">
-              <h3 className="text-xl font-semibold text-gray-900 mb-6">
-                학습 테스트
-              </h3>
-              
-              {!testResults ? (
-                <div className="space-y-6">
-                  {currentLesson.test_questions.map((question, index) => (
-                    <div key={index} className="border-b border-gray-200 pb-6 last:border-b-0">
-                      <h4 className="font-medium text-gray-900 mb-4">
-                        {question.question}
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        {question.options.map((option, optionIndex) => (
-                          <button
-                            key={optionIndex}
-                            onClick={() => handleAnswerSelect(index, option)}
-                            className={`
-                              p-3 rounded-lg border-2 transition-colors duration-200 text-left
-                              ${testAnswers[index] === option
-                                ? 'border-primary-500 bg-primary-50 text-primary-700'
-                                : 'border-gray-200 hover:border-gray-300'
-                              }
-                            `}
-                          >
-                            <div className="font-mono text-lg mb-1">{option}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  
-                  <div className="text-center pt-4">
-                    <button
-                      onClick={handleNext}
-                      disabled={testAnswers.length !== currentLesson.test_questions.length}
-                      className="btn-primary"
-                    >
-                      답안 제출하기
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-primary-600 mb-2">
-                      {testResults.score}점
-                    </div>
-                    <p className="text-gray-600">
-                      {testResults.correct}개 정답 / {testResults.total}개 문제
-                    </p>
-                  </div>
-                  
-                  {testResults.incorrect_answers.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold text-red-600 mb-4">
-                        오답 문제 (복습 노트에 저장됨)
-                      </h4>
-                      <div className="space-y-3">
-                        {testResults.incorrect_answers.map((item: any, index: number) => (
-                          <div key={index} className="bg-red-50 border border-red-200 rounded-lg p-4">
-                            <p className="font-medium text-red-800 mb-2">{item.question}</p>
-                            <div className="flex items-center space-x-4 text-sm">
-                              <span className="text-red-600">
-                                정답: <span className="font-mono">{item.correct}</span>
-                              </span>
-                              <span className="text-gray-600">
-                                내 답: <span className="font-mono">{item.user_answer}</span>
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div className="text-center">
-                    <button
-                      onClick={() => {
-                        setTestMode(false)
-                        setTestResults(null)
-                        refetch()
-                      }}
-                      className="btn-primary"
-                    >
-                      다음 학습하기
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="card text-center py-12">
-          <p className="text-gray-600">학습 내용을 불러오지 못했습니다.</p>
-        </div>
-      )}
-    </div>
-  )
+      <BottomBar
+        onLeft={prev}
+        onMid={repeat}
+        onRight={next}
+        rightLabel={isLast ? "완료" : "다음"}
+      />
+    </AppShellMobile>
+  );
 }
-
-export default Learn

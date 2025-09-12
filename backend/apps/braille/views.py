@@ -1,51 +1,30 @@
-import json
-import logging
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+import json, os
 
-logger = logging.getLogger(__name__)
+# backend/data/ko_braille.json 사용
+DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "ko_braille.json")
+with open(DATA_PATH, "r", encoding="utf-8") as f:
+    MAP = json.load(f)
 
+def text_to_cells(text:str):
+    res = []
+    for ch in text or "":
+        arr = MAP.get(ch)
+        if isinstance(arr, list) and len(arr) == 6:
+            res.append(arr)
+        else:
+            res.append([0,0,0,0,0,0])
+    return res
 
 @csrf_exempt
-@require_http_methods(["POST"])
-def braille_output(request):
-    """Handle braille output requests (stub for hardware integration)"""
+def convert(request):
     try:
-        data = json.loads(request.body)
-        tokens = data.get('tokens', [])
-        mode = data.get('mode', 'once')
-        
-        if not tokens:
-            return JsonResponse({'error': 'Tokens are required'}, status=400)
-        
-        # Log the braille output request for debugging
-        logger.info(f"Braille output request: tokens={tokens}, mode={mode}")
-        
-        # Simulate hardware processing
-        if mode == 'chunked':
-            # Process tokens in chunks for long text
-            logger.info(f"Processing {len(tokens)} tokens in chunks")
-            for i, token in enumerate(tokens):
-                logger.info(f"Chunk {i+1}: {token}")
+        if request.method == "GET":
+            text = request.GET.get("text","")
         else:
-            # Process all tokens at once
-            logger.info(f"Processing all tokens at once: {tokens}")
-        
-        # Simulate processing delay
-        import time
-        time.sleep(0.1)
-        
-        # Return success response
-        return JsonResponse({
-            'ok': True,
-            'message': 'Braille output processed successfully',
-            'tokens_processed': len(tokens),
-            'mode': mode
-        })
-        
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+            text = payload.get("text","")
+        return JsonResponse({"cells": text_to_cells(text)})
     except Exception as e:
-        logger.error(f"Braille output error: {str(e)}")
-        return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
+        return JsonResponse({"error": str(e)}, status=400)

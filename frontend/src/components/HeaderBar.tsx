@@ -51,7 +51,7 @@ const HeaderBar = () => {
           </nav>
 
           {/* Braille Toggle */}
-          <BrailleToggle />
+          <BrailleToggle on={false} onChange={() => {}} />
         </div>
       </div>
     </header>

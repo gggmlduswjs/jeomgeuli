@@ -1,0 +1,28 @@
+{
+  "items": [
+    { "type": "char", "char": "ㄱ", "name": "기역", "tts": "자음 기역, ㄱ 입니다.", "pattern": "100000" },
+    { "type": "char", "char": "ㄴ", "name": "니은", "tts": "자음 니은, ㄴ 입니다.", "pattern": "101000" },
+    { "type": "char", "char": "ㄷ", "name": "디귿", "tts": "자음 디귿, ㄷ 입니다.", "pattern": "110000" },
+    { "type": "char", "char": "ㄹ", "name": "리을", "tts": "자음 리을, ㄹ 입니다.", "pattern": "111000" },
+    { "type": "char", "char": "ㅁ", "name": "미음", "tts": "자음 미음, ㅁ 입니다.", "pattern": "101100" },
+    { "type": "char", "char": "ㅂ", "name": "비읍", "tts": "자음 비읍, ㅂ 입니다.", "pattern": "110100" },
+    { "type": "char", "char": "ㅅ", "name": "시옷", "tts": "자음 시옷, ㅅ 입니다.", "pattern": "100100" },
+    { "type": "char", "char": "ㅇ", "name": "이응", "tts": "자음 이응, ㅇ 입니다.", "pattern": "011100" },
+    { "type": "char", "char": "ㅈ", "name": "지읒", "tts": "자음 지읒, ㅈ 입니다.", "pattern": "100110" },
+    { "type": "char", "char": "ㅊ", "name": "치읓", "tts": "자음 치읓, ㅊ 입니다.", "pattern": "100111" },
+    { "type": "char", "char": "ㅋ", "name": "키읔", "tts": "자음 키읔, ㅋ 입니다.", "pattern": "101010" },
+    { "type": "char", "char": "ㅌ", "name": "티읕", "tts": "자음 티읕, ㅌ 입니다.", "pattern": "111010" },
+    { "type": "char", "char": "ㅍ", "name": "피읖", "tts": "자음 피읖, ㅍ 입니다.", "pattern": "110110" },
+    { "type": "char", "char": "ㅎ", "name": "히읗", "tts": "자음 히읗, ㅎ 입니다.", "pattern": "101110" },
+    { "type": "char", "char": "ㅏ", "name": "아", "tts": "모음 아, ㅏ 입니다.", "pattern": "001000" },
+    { "type": "char", "char": "ㅑ", "name": "야", "tts": "모음 야, ㅑ 입니다.", "pattern": "001001" },
+    { "type": "char", "char": "ㅓ", "name": "어", "tts": "모음 어, ㅓ 입니다.", "pattern": "000100" },
+    { "type": "char", "char": "ㅕ", "name": "여", "tts": "모음 여, ㅕ 입니다.", "pattern": "000101" },
+    { "type": "char", "char": "ㅗ", "name": "오", "tts": "모음 오, ㅗ 입니다.", "pattern": "001100" },
+    { "type": "char", "char": "ㅛ", "name": "요", "tts": "모음 요, ㅛ 입니다.", "pattern": "001101" },
+    { "type": "char", "char": "ㅜ", "name": "우", "tts": "모음 우, ㅜ 입니다.", "pattern": "001010" },
+    { "type": "char", "char": "ㅠ", "name": "유", "tts": "모음 유, ㅠ 입니다.", "pattern": "001011" },
+    { "type": "char", "char": "ㅡ", "name": "으", "tts": "모음 으, ㅡ 입니다.", "pattern": "001001" },
+    { "type": "char", "char": "ㅣ", "name": "이", "tts": "모음 이, ㅣ 입니다.", "pattern": "000001" }
+  ]
+}

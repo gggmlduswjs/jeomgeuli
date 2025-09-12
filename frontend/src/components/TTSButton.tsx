@@ -9,7 +9,7 @@ interface TTSButtonProps {
 }
 
 const TTSButton = ({ text, className = '', size = 'md' }: TTSButtonProps) => {
-  const { isPlaying, speak, stop, isSupported } = useTTS()
+  const { isPlaying, speak, stop, isSupported, isReady } = useTTS()
 
   const handleClick = () => {
     if (isPlaying) {
@@ -19,7 +19,7 @@ const TTSButton = ({ text, className = '', size = 'md' }: TTSButtonProps) => {
     }
   }
 
-  if (!isSupported) {
+  if (!isSupported || !isReady) {
     return null
   }
 

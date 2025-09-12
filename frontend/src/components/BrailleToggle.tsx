@@ -1,27 +1,13 @@
-import { useBraille } from '../hooks/useBraille'
-import { Eye, EyeOff } from 'lucide-react'
-
-const BrailleToggle = () => {
-  const { isEnabled, toggleBraille } = useBraille()
-
+import React from "react";
+export default function BrailleToggle({
+  on, onChange
+}:{on:boolean; onChange:(v:boolean)=>void}) {
   return (
     <button
-      onClick={toggleBraille}
-      className={`
-        flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors duration-200
-        ${isEnabled 
-          ? 'bg-accent-500 text-white' 
-          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-        }
-      `}
-      aria-label={isEnabled ? '점자 출력 끄기' : '점자 출력 켜기'}
-    >
-      {isEnabled ? <Eye size={20} /> : <EyeOff size={20} />}
-      <span className="hidden sm:inline text-sm font-medium">
-        {isEnabled ? '점자 ON' : '점자 OFF'}
-      </span>
+      aria-label="점자 출력"
+      onClick={()=>onChange(!on)}
+      className={`px-3 py-2 rounded-xl border ${on?"bg-accent-500 text-white border-accent-600":"bg-white text-brand-900 border-ink-100"}`}>
+      점자출력 {on?"ON":"OFF"}
     </button>
-  )
+  );
 }
-
-export default BrailleToggle

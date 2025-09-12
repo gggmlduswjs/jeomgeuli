@@ -26,9 +26,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'apps.api',
+    'apps.braille',
     'apps.chat',
     'apps.learn',
-    'apps.braille',
+    'apps.learning',
+    'apps.newsfeed',
+    'apps.search',
 ]
 
 MIDDLEWARE = [
@@ -100,7 +104,10 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3002',
+]
 CORS_ALLOW_CREDENTIALS = True
 
 # REST Framework settings
@@ -113,5 +120,3 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Gemini API Key
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
