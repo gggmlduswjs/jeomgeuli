@@ -55,11 +55,20 @@ export default function FreeConvert() {
     try {
       setIsConverting(true);
       setError(null);
-      const result = await convertToBraille(inputText);
+      
+      // 점자 변환 (정식 엔진 사용)
+      const brailleCells = localToBrailleCells(inputText);
+      
+      // 변환 결과를 올바른 형식으로 구성
+      const result = {
+        original: inputText,
+        brailleCells: brailleCells,
+        full_braille: brailleCells
+      };
       setConversion(result);
       
       // TTS로 변환 결과 읽기
-      speak(`변환 완료. ${result.original}은 점자로 ${result.full_braille}입니다.`);
+      speak(`변환 완료. ${inputText}의 점자 변환이 완료되었습니다.`);
     } catch (e) {
       setError("점자 변환 중 오류가 발생했습니다.");
       console.error("Conversion error:", e);
@@ -133,7 +142,7 @@ export default function FreeConvert() {
         )}
 
         {/* 변환 결과 */}
-        {conversion && (
+        {conversion && conversion.original && (
           <div className="space-y-4">
             {/* 전체 결과 */}
             <div className="card">
@@ -141,9 +150,15 @@ export default function FreeConvert() {
               <div className="space-y-3">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-800 mb-2">{conversion.original}</div>
-                  <div className="text-3xl font-mono text-blue-600 mb-3">{conversion.full_braille}</div>
+                  {/* 점자 패턴을 시각적으로 표시 */}
+                  <div className="text-3xl font-mono text-blue-600 mb-3">
+                    {conversion.brailleCells.map((cell, idx) => 
+                      cell.map(dot => dot ? '●' : '○').join('')
+                    ).join(' ')}
+                  </div>
+                  {/* 6점 점자 셀 UI */}
                   <div className="flex flex-wrap justify-center gap-1">
-                    {localToBrailleCells(conversion.original).map((cell, idx) => (
+                    {conversion.brailleCells.map((cell, idx) => (
                       <CellView key={idx} c={cell} />
                     ))}
                   </div>

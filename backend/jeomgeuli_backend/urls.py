@@ -1,8 +1,13 @@
 from django.urls import path
 from . import views
+from apps.chat.views import ask
 
 urlpatterns = [
     path("api/health/", views.health),
+
+    # AI 채팅
+    path("api/chat/ask", ask, name="chat_ask"),
+    path("api/chat/ask/", ask, name="chat_ask_slash"),
 
     # 학습 데이터
     path("api/learn/char/", views.learn_chars),

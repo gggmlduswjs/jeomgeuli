@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { toBraille, cellsToBins, forBLE } from '../lib/brailleRules';
 
-export default function useBrailleBLE() {
+export function useBrailleBLE() {
   const [isConnected, setIsConnected] = useState(false);
 
   const connect = useCallback(async () => {
@@ -55,3 +55,5 @@ export default function useBrailleBLE() {
     isConnected 
   };
 }
+
+export default useBrailleBLE;

@@ -9,6 +9,7 @@ type CommandHandlers = {
   learn?: () => void;
   brailleOn?: () => void;
   brailleOff?: () => void;
+  detail?: (idx?: number) => void;
 };
 
 export default function useVoiceCommands(handlers: CommandHandlers) {
@@ -55,6 +56,16 @@ export default function useVoiceCommands(handlers: CommandHandlers) {
     if (/(점자출력꺼|점자꺼|점자중지)/.test(t)) {
       console.log("Voice command: braille off");
       return handlers.brailleOff?.();
+    }
+
+    // 자세히 명령어 처리
+    const detailRx = /(자세히|더 알려줘|첫 ?번|두 ?번|세 ?번|네 ?번)/;
+    if (detailRx.test(t)) {
+      console.log("Voice command: detail");
+      const m = t.match(/(첫|두|세|네)/);
+      const map: { [key: string]: number } = { '첫': 0, '두': 1, '세': 2, '네': 3 };
+      const idx = m ? map[m[1]] ?? 0 : undefined;
+      return handlers.detail?.(idx);
     }
 
     // 디버깅용

@@ -1,22 +1,42 @@
 import { FileText, Type, Volume2 } from 'lucide-react';
-import type { SummarizeResult } from '../types/explore';
+import { localToBrailleCells } from '../lib/braille';
+import type { ChatResponse } from '../lib/api';
 
 interface SummaryCardProps {
-  summary: SummarizeResult;
-  onDetailClick: () => void;
-  onBrailleClick: () => void;
-  onKeywordClick: (keyword: string) => void;
+  data: ChatResponse;
   className?: string;
+  onBulletClick?: (index: number) => void;
 }
 
 export function SummaryCard({ 
-  summary, 
-  onDetailClick, 
-  onBrailleClick, 
-  onKeywordClick,
-  className = '' 
+  data, 
+  className = '',
+  onBulletClick
 }: SummaryCardProps) {
-  const { bullets, keywords, source } = summary;
+  // 안전장치: data가 없으면 빈 컴포넌트 반환
+  if (!data) {
+    return (
+      <div className="bg-white border border-border rounded-2xl p-6 shadow-toss">
+        <p className="text-muted">요약 정보를 불러오는 중...</p>
+      </div>
+    );
+  }
+
+  // 키워드 클릭 시 점자 출력
+  const handleKeywordClick = (keyword: string) => {
+    console.log(`점자 출력: ${keyword}`);
+    const brailleCells = localToBrailleCells(keyword);
+    console.log('점자 패턴:', brailleCells);
+    // TODO: 실제 BLE 점자 디스플레이로 전송
+  };
+
+  const { chat_markdown = '', keywords = [], braille_words = [], mode = 'qa', actions = {}, meta = {} } = data;
+  
+  // 마크다운을 파싱하여 불릿 포인트 추출
+  const bullets = chat_markdown
+    .split('\n')
+    .filter(line => line.trim().startsWith('•'))
+    .map(line => line.replace(/^•\s*/, '').trim());
   
   return (
     <div 
@@ -25,92 +45,87 @@ export function SummaryCard({
         ${className}
       `}
       role="region"
-      aria-label={`${source} 요약 정보`}
+      aria-label={`${mode} 모드 응답`}
     >
       {/* 제목 */}
       <div className="flex items-center gap-2 mb-4">
         <FileText className="w-5 h-5 text-primary" aria-hidden="true" />
         <h3 className="text-lg font-semibold text-fg">
-          요약 5가지
+          {mode === 'news' ? '뉴스 요약' : mode === 'explain' ? '설명' : '답변'}
         </h3>
       </div>
       
       {/* 불릿 포인트 */}
-      <div className="mb-6">
-        <ul className="space-y-2" role="list">
-          {bullets.map((bullet, index) => (
-            <li 
-              key={index}
-              className="flex items-start gap-3"
-              role="listitem"
-              aria-label={`요약 ${index + 1}: ${bullet}`}
-            >
-              <span 
-                className="flex-shrink-0 w-2 h-2 rounded-full bg-primary mt-2"
-                aria-hidden="true"
-              />
-              <span className="text-fg leading-relaxed">
-                {bullet}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {bullets.length > 0 && (
+        <div className="mb-6">
+          <ul className="space-y-2" role="list">
+            {bullets.map((bullet, index) => (
+              <li 
+                key={index}
+                className={`flex items-start gap-3 ${onBulletClick ? 'cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors' : ''}`}
+                role="listitem"
+                aria-label={`요약 ${index + 1}: ${bullet}`}
+                onClick={() => onBulletClick?.(index)}
+              >
+                <span 
+                  className="flex-shrink-0 w-2 h-2 rounded-full bg-primary mt-2"
+                  aria-hidden="true"
+                />
+                <span className="text-fg leading-relaxed">
+                  {bullet}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       
       {/* 키워드 칩 */}
-      <div className="mb-6">
-        <h4 className="text-sm font-medium text-muted mb-3">
-          핵심 키워드
-        </h4>
-        <div className="flex flex-wrap gap-2">
-          {keywords.map((keyword, index) => (
-            <button
-              key={index}
-              onClick={() => onKeywordClick(keyword)}
-              className="
-                px-3 py-2 bg-primary/10 text-primary rounded-lg
-                border border-primary/20 hover:bg-primary/20
-                transition-colors duration-200
-                focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2
-              "
-              aria-label={`${keyword} 키워드 점자 출력`}
-            >
-              {keyword}
-            </button>
-          ))}
+      {keywords.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-sm font-medium text-muted mb-3">
+            핵심 키워드
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {keywords.map((keyword, index) => (
+              <button
+                key={index}
+                onClick={() => handleKeywordClick(keyword)}
+                className="
+                  px-3 py-2 bg-primary/10 text-primary rounded-lg
+                  border border-primary/20 hover:bg-primary/20
+                  transition-colors duration-200
+                  focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2
+                "
+                aria-label={`${keyword} 키워드 점자 출력`}
+              >
+                {keyword}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       
-      {/* 액션 버튼들 */}
-      <div className="flex gap-3">
-        <button
-          onClick={onDetailClick}
-          className="
-            flex-1 flex items-center justify-center gap-2 px-4 py-3
-            bg-accent text-white rounded-lg
-            hover:bg-accent/90 transition-colors duration-200
-            focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2
-          "
-          aria-label="자세한 설명 보기"
-        >
-          <FileText className="w-4 h-4" aria-hidden="true" />
-          <span>자세히 설명</span>
-        </button>
-        
-        <button
-          onClick={onBrailleClick}
-          className="
-            flex-1 flex items-center justify-center gap-2 px-4 py-3
-            bg-primary text-white rounded-lg
-            hover:bg-primary/90 transition-colors duration-200
-            focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2
-          "
-          aria-label="모든 키워드 점자 출력"
-        >
-          <Type className="w-4 h-4" aria-hidden="true" />
-          <span>키워드 점자 출력</span>
-        </button>
-      </div>
+      {/* 액션 힌트 */}
+      {actions.voice_hint && (
+        <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+          <p className="text-sm text-muted">
+            <strong>음성 명령:</strong> {actions.voice_hint}
+          </p>
+          {actions.learn_suggestion && (
+            <p className="text-sm text-muted mt-1">
+              {actions.learn_suggestion}
+            </p>
+          )}
+        </div>
+      )}
+      
+      {/* 출처 힌트 */}
+      {meta.source_hint && (
+        <div className="text-xs text-muted text-center">
+          {meta.source_hint}
+        </div>
+      )}
       
       {/* 스크린 리더용 요약 텍스트 */}
       <div className="sr-only" aria-live="polite">
