@@ -1,11 +1,11 @@
 import BrailleCell from "./BrailleCell";
-import { textToBrailleBits } from "../lib/braille";
+import { convertBraille } from "../lib/api";
 
-export default function BrailleStrip({ text, size="md" }:{text:string; size?:"md"|"lg"}){
-  const cells = textToBrailleBits(text);
+export default function BrailleStrip({ text, size="normal" }:{text:string; size?:"normal"|"large"}){
+  const cells = convertBraille(text);
   return (
     <div className="flex items-center justify-center gap-6">
-      {cells.map((bits: any, i: number)=> <BrailleCell key={i} bits={bits} size={size} />)}
+      {cells.map((bits: boolean[], i: number)=> <BrailleCell key={i} pattern={bits} size={size} />)}
     </div>
   );
 }

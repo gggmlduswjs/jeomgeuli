@@ -1,6 +1,6 @@
 import React from "react";
 import BrailleDots from "./BrailleDots";
-import type { Cell } from "../lib/brailleLocal";
+import type { Cell } from "../lib/brailleMap";
 
 export default function BrailleRow({ cells }: { cells: Cell[] }) {
   return (

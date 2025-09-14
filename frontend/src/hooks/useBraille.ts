@@ -1,23 +1,23 @@
 import { useEffect, useState } from "react";
-import { brailleConvert } from "../lib/api";
-import { localToBrailleCells, type Cell } from "../lib/braille";
+import { toBraille, cellsToBins } from "../lib/brailleRules";
 
 export default function useBraille(text: string) {
-  const [cells, setCells] = useState<Cell[]>([]);
+  const [cells, setCells] = useState<boolean[][]>([]);
   useEffect(() => {
-    let off = false;
-    (async () => {
-      if (!text) { setCells([]); return; }
-      try {
-        const r = await brailleConvert(text);
-        if (!off && Array.isArray(r) && r.length) { 
-          setCells(r); 
-          return; 
-        }
-      } catch {}
-      if (!off) setCells(localToBrailleCells(text));
-    })();
-    return () => { off = true; };
+    if (!text) { 
+      setCells([]); 
+      return; 
+    }
+    
+    try {
+      // 새로운 점자 변환 시스템 사용
+      const tokens = toBraille(text);
+      const bins = cellsToBins(tokens);
+      setCells(bins);
+    } catch (error) {
+      console.error('점자 변환 오류:', error);
+      setCells([]);
+    }
   }, [text]);
   return cells;
 }

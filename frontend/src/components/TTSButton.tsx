@@ -9,17 +9,17 @@ interface TTSButtonProps {
 }
 
 const TTSButton = ({ text, className = '', size = 'md' }: TTSButtonProps) => {
-  const { isPlaying, speak, stop, isSupported, isReady } = useTTS()
+  const { isSpeaking, speak, stop, isSupported } = useTTS()
 
   const handleClick = () => {
-    if (isPlaying) {
+    if (isSpeaking) {
       stop()
     } else {
       speak(text)
     }
   }
 
-  if (!isSupported || !isReady) {
+  if (!isSupported) {
     return null
   }
 
@@ -40,15 +40,15 @@ const TTSButton = ({ text, className = '', size = 'md' }: TTSButtonProps) => {
       onClick={handleClick}
       className={`
         ${sizeClasses[size]} rounded-full flex items-center justify-center transition-all duration-200
-        ${isPlaying 
+        ${isSpeaking 
           ? 'bg-accent-500 hover:bg-accent-600 text-white' 
           : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
         }
         ${className}
       `}
-      aria-label={isPlaying ? '음성 재생 중지' : '음성 재생'}
+      aria-label={isSpeaking ? '음성 재생 중지' : '음성 재생'}
     >
-      {isPlaying ? (
+      {isSpeaking ? (
         <VolumeX size={iconSizes[size]} />
       ) : (
         <Volume2 size={iconSizes[size]} />

@@ -1,18 +1,17 @@
 // src/pages/LearnStep.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import AppShellMobile from "../components/AppShellMobile";
-import BottomBar from "../components/BottomBar";
+import { ArrowLeft, Play, SkipForward, RotateCcw, HelpCircle } from "lucide-react";
 import { fetchChars, fetchWords, fetchSentences, convertBraille } from "../lib/api";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { Cell } from "../lib/braille";
+import type { Cell } from "../lib/brailleMap";
 
 function Dot({ on }: { on: boolean }) {
   return (
     <span 
-      className={`inline-block w-5 h-5 rounded-full mx-0.5 my-0.5 border-2 transition-all duration-200 ${
+      className={`inline-block w-4 h-4 rounded-full mx-0.5 my-0.5 border-2 transition-all duration-200 ${
         on 
-          ? "bg-blue-600 border-blue-600 shadow-md" 
-          : "bg-gray-100 border-gray-300"
+          ? "bg-primary border-primary shadow-sm" 
+          : "bg-card border-border"
       }`} 
     />
   );
@@ -21,7 +20,7 @@ function Dot({ on }: { on: boolean }) {
 function CellView({ c }: { c: Cell }) {
   const [a,b,c2,d,e,f] = c || [0,0,0,0,0,0];
   return (
-    <div className="inline-flex flex-col px-3 py-2 rounded-lg border-2 bg-white shadow-sm hover:shadow-md transition-shadow">
+    <div className="inline-flex flex-col px-3 py-2 rounded-xl border border-border bg-white shadow-toss hover:shadow-toss-lg transition-shadow">
       <div className="flex">
         <Dot on={!!a}/>
         <Dot on={!!d}/>
@@ -168,45 +167,139 @@ export default function LearnStep(){
     if (t) say(t);
   };
 
-  if (loading) return <AppShellMobile title={title}><div className="p-6 text-gray-500">불러오는 중…</div></AppShellMobile>;
-  if (!current) return <AppShellMobile title={title}><div className="p-6 text-gray-500">학습 항목이 없습니다.</div></AppShellMobile>;
+  if (loading) return (
+    <div className="min-h-screen bg-bg text-fg flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+        <div className="text-muted">불러오는 중…</div>
+      </div>
+    </div>
+  );
+  
+  if (!current) return (
+    <div className="min-h-screen bg-bg text-fg flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-muted">학습 항목이 없습니다.</div>
+      </div>
+    </div>
+  );
 
   return (
-    <AppShellMobile title={title}>
-      <div className="space-y-4 pb-28 p-4">
-        <div className="rounded-2xl bg-white border p-4">
-          <div className="text-sm text-gray-500 mb-1">안내</div>
-          <div className="text-lg">
-            {current?.decomposeTTS && Array.isArray(current.decomposeTTS) 
-              ? current.decomposeTTS.join(" ")
-              : current?.ttsIntro 
-              ? current.ttsIntro
-              : Array.isArray(current?.tts) 
-              ? current.tts.join(" ") 
-              : (current?.tts || heading)
-            }
+    <div className="min-h-screen bg-bg text-fg flex flex-col">
+      {/* 헤더 */}
+      <header className="bg-white border-b border-border shadow-toss">
+        <div className="max-w-md mx-auto px-4">
+          <div className="flex items-center justify-between py-4">
+            <button
+              onClick={() => navigate(-1)}
+              className="p-3 rounded-2xl hover:bg-card focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="뒤로 가기"
+            >
+              <ArrowLeft className="w-6 h-6 text-fg" aria-hidden="true" />
+            </button>
+            
+            <div className="flex-1 text-center">
+              <h1 className="text-lg font-semibold text-fg">{title}</h1>
+              <div className="text-xs text-muted mt-1">
+                {i + 1} / {items.length}
+              </div>
+            </div>
+            
+            <div className="w-12"></div>
           </div>
-          {!!current?.examples?.length && <div className="text-sm text-gray-400 mt-2">예시: {current.examples.join(", ")}</div>}
         </div>
+      </header>
 
-        <div className="rounded-2xl bg-white border p-6 text-center">
-          <div className="text-3xl font-extrabold text-slate-800 mb-3">{heading}</div>
-          <div className="inline-flex flex-wrap justify-center gap-2">
-            {cells.length ? (
-              cells.map((c, idx) => <CellView key={idx} c={c} />)
-            ) : (
-              <span className="text-gray-400 text-sm">점자 데이터를 불러오는 중...</span>
+      {/* 메인 콘텐츠 */}
+      <main className="flex-1 p-4">
+        <div className="max-w-md mx-auto space-y-6">
+          {/* 진척도 바 */}
+          <div className="bg-white rounded-2xl p-4 shadow-toss">
+            <div className="flex justify-between text-sm text-muted mb-2">
+              <span>진척도</span>
+              <span>{Math.round(((i + 1) / items.length) * 100)}%</span>
+            </div>
+            <div className="w-full bg-border rounded-full h-2">
+              <div 
+                className="bg-primary h-2 rounded-full transition-all duration-300"
+                style={{ width: `${((i + 1) / items.length) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          {/* 안내 카드 */}
+          <div className="bg-white rounded-2xl p-6 shadow-toss">
+            <div className="text-sm text-primary font-medium mb-2">💡 학습 안내</div>
+            <div className="text-lg leading-relaxed">
+              {current?.decomposeTTS && Array.isArray(current.decomposeTTS) 
+                ? current.decomposeTTS.join(" ")
+                : current?.ttsIntro 
+                ? current.ttsIntro
+                : Array.isArray(current?.tts) 
+                ? current.tts.join(" ") 
+                : (current?.tts || heading)
+              }
+            </div>
+            {!!current?.examples?.length && (
+              <div className="text-sm text-muted mt-3 p-3 bg-card rounded-xl">
+                <strong>예시:</strong> {current.examples.join(", ")}
+              </div>
             )}
           </div>
-          {cells.length > 0 && (
-            <div className="text-xs text-gray-500 mt-2">
-              {cells.length}개 점자 셀
+
+          {/* 점자 표시 카드 */}
+          <div className="bg-white rounded-2xl p-8 text-center shadow-toss">
+            <div className="text-4xl font-bold text-fg mb-6">{heading}</div>
+            <div className="inline-flex flex-wrap justify-center gap-3">
+              {cells.length ? (
+                cells.map((c, idx) => <CellView key={idx} c={c} />)
+              ) : (
+                <div className="text-muted text-sm py-8">점자 데이터를 불러오는 중...</div>
+              )}
             </div>
-          )}
+            {cells.length > 0 && (
+              <div className="text-xs text-muted mt-4">
+                {cells.length}개 점자 셀로 구성
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      {/* 하단 액션 바 */}
+      <div className="bg-white border-t border-border shadow-toss">
+        <div className="max-w-md mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={prev}
+              disabled={i === 0}
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-card text-fg hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label="이전 항목"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>이전</span>
+            </button>
+            
+            <button
+              onClick={repeat}
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent"
+              aria-label="다시 듣기"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>반복</span>
+            </button>
+            
+            <button
+              onClick={next}
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-primary text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary"
+              aria-label={i === items.length - 1 ? "테스트 시작" : "다음 항목"}
+            >
+              <span>{i === items.length - 1 ? "테스트" : "다음"}</span>
+              <SkipForward className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
-
-      <BottomBar onLeft={prev} onMid={repeat} onRight={next} rightLabel={i===items.length-1?"테스트":"다음"} />
-    </AppShellMobile>
+    </div>
   );
 }

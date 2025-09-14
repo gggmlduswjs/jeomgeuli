@@ -1,165 +1,255 @@
-// src/pages/Explore.tsx
-import React, { useState } from "react";
-import AppShellMobile from "../components/AppShellMobile";
-import { fetchNews, convertBraille } from "../lib/api";
-import useBrailleBLE from "../hooks/useBrailleBLE";
-import type { Cell } from "../lib/braille";
+import { useState, useEffect, useRef } from 'react';
+import { MessageBubble } from '../components/MessageBubble';
+import { SummaryCard } from '../components/SummaryCard';
+import { ChatLikeInput } from '../components/ChatLikeInput';
+import { useNLU } from '../hooks/useNLU';
+import { useSummarize } from '../hooks/useSummarize';
+import { useTTS } from '../hooks/useTTS';
+import useBrailleBLE from '../hooks/useBrailleBLE';
+import { fetchWeather, fetchNewsRSS } from '../lib/api';
+import type { Message, SummarizeResult } from '../types/explore';
 
-function Dot({ on }: { on:boolean }) {
-  return <span className={`inline-block w-3 h-3 rounded-full mx-0.5 border ${on?"bg-blue-500 border-blue-500":"bg-white border-gray-300"}`} />;
-}
-function Chip({ word, cells }: { word: string; cells: Cell[] }) {
-  return (
-    <div className="inline-flex items-center mr-2 mb-2 rounded-full border px-3 py-1 bg-white">
-      <span className="mr-2 text-sm font-medium">{word}</span>
-      <div className="inline-flex">{cells.slice(0,3).map((c, i)=>(
-        <span key={i} className="inline-flex flex-col mx-0.5">
-          <div><Dot on={!!c[0]}/><Dot on={!!c[3]}/></div>
-          <div><Dot on={!!c[1]}/><Dot on={!!c[4]}/></div>
-          <div><Dot on={!!c[2]}/><Dot on={!!c[5]}/></div>
-        </span>
-      ))}</div>
-    </div>
-  );
-}
-
-export default function Explore(){
-  const [q, setQ] = useState("오늘의 뉴스 5개 요약해줘");
-  const [items, setItems] = useState<{title:string, summary:string, link?:string}[]>([]);
-  const [chips, setChips] = useState<{word:string, cells:Cell[]}[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string|null>(null);
-  const [bleConnected, setBleConnected] = useState(false);
-  const { connect, sendCells } = useBrailleBLE();
-
-  const ask = async () => {
-    setLoading(true); setErr(null);
-    try{
-      const list = await fetchNews(q);
-      setItems(list);
-      // 제목에서 간단 키워드 3개 추출 → 점자칩
-      const ks = Array.from(new Set(list.map(x => (x.title||"").split(/[ ,:/\-]/)[0]).filter(Boolean))).slice(0,3);
-      const withBraille = await Promise.all(ks.map(async w => ({ word:w, cells: await convertBraille(w) })));
-      setChips(withBraille);
-    }catch(e:any){
-      setErr(e?.message || "요청에 실패했습니다.");
-    }finally{ setLoading(false); }
+export default function Explore() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentSummary, setCurrentSummary] = useState<SummarizeResult | null>(null);
+  const [newsIndex, setNewsIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const { parse } = useNLU();
+  const { summarize } = useSummarize();
+  const { speak, stop, isSpeaking } = useTTS();
+  const { writePattern, connect, isConnected } = useBrailleBLE();
+  
+  // 메시지 추가 시 자동 스크롤
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  const handleConnectBLE = async () => {
-    try {
-      await connect();
-      setBleConnected(true);
-      alert("점자 디스플레이가 연결되었습니다!");
-    } catch (e) {
-      alert("점자 디스플레이 연결에 실패했습니다. 디바이스가 켜져 있는지 확인해주세요.");
-    }
+  
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+  
+  // 초기 환영 메시지
+  useEffect(() => {
+    const welcomeMessage: Message = {
+      id: 'welcome',
+      type: 'assistant',
+      content: '안녕하세요! 정보탐색 모드입니다. "오늘 날씨", "뉴스 5개", "자세히", "키워드 점자 출력" 등의 명령을 말하거나 입력해주세요.',
+      timestamp: new Date()
+    };
+    setMessages([welcomeMessage]);
+  }, []);
+  
+  const addMessage = (content: string, type: 'user' | 'assistant') => {
+    const message: Message = {
+      id: Date.now().toString(),
+      type,
+      content,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, message]);
   };
-
-  const handleOutputToBraille = async (text: string) => {
-    if (!bleConnected) {
-      alert("먼저 점자 디스플레이를 연결해주세요.");
-      return;
-    }
+  
+  const handleUserInput = async (input: string) => {
+    // 사용자 메시지 추가
+    addMessage(input, 'user');
+    setIsLoading(true);
+    
     try {
-      const cells = await convertBraille(text);
-      const boolCells = cells.map(cell => cell.map(dot => dot === 1));
-      await sendCells(boolCells);
-      alert(`"${text}"를 점자 디스플레이로 출력했습니다.`);
-    } catch (e) {
-      alert("점자 출력에 실패했습니다.");
-    }
-  };
-
-  const handleOutputKeywords = async () => {
-    if (!bleConnected) {
-      alert("먼저 점자 디스플레이를 연결해주세요.");
-      return;
-    }
-    try {
-      for (const chip of chips) {
-        const boolCells = chip.cells.map(cell => cell.map(dot => dot === 1));
-        await sendCells(boolCells);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+      // 의도 파악
+      const intent = parse(input);
+      
+      switch (intent) {
+        case 'weather': {
+          const weatherData = await fetchWeather();
+          const weatherText = `${weatherData.location}의 오늘 날씨는 ${weatherData.condition}, 기온 ${weatherData.temp}도, 미세먼지 ${weatherData.pm25}입니다.`;
+          const summary = await summarize(weatherText, 'weather');
+          setCurrentSummary(summary);
+          
+          // 요약 카드 표시를 위한 시스템 메시지
+          addMessage('날씨 정보를 요약했습니다.', 'assistant');
+          
+          // TTS로 요약 읽기
+          speak(summary.bullets.join('. '));
+          break;
+        }
+        
+        case 'news': {
+          const newsData = await fetchNewsRSS();
+          const newsText = `오늘의 주요 뉴스 ${newsData.length}건을 요약했습니다.`;
+          const summary = await summarize(newsText, 'news');
+          setCurrentSummary(summary);
+          setNewsIndex(0);
+          
+          addMessage('뉴스를 요약했습니다.', 'assistant');
+          speak(summary.bullets.join('. '));
+          break;
+        }
+        
+        case 'detail': {
+          if (currentSummary) {
+            addMessage(currentSummary.longText, 'assistant');
+            speak(currentSummary.longText);
+          } else {
+            addMessage('먼저 날씨나 뉴스를 요청해주세요.', 'assistant');
+          }
+          break;
+        }
+        
+        case 'braille': {
+          if (currentSummary) {
+            addMessage('키워드를 점자로 출력합니다.', 'assistant');
+            // 각 키워드를 순차적으로 점자 출력
+            for (const keyword of currentSummary.keywords) {
+              await writePattern(keyword);
+              // 각 키워드 사이에 약간의 지연
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          } else {
+            addMessage('먼저 날씨나 뉴스를 요청해주세요.', 'assistant');
+          }
+          break;
+        }
+        
+        case 'next': {
+          if (currentSummary?.source === 'news') {
+            setNewsIndex(prev => prev + 1);
+            addMessage(`다음 뉴스로 이동했습니다. (${newsIndex + 2}번째)`, 'assistant');
+          } else {
+            addMessage('다음 항목이 없습니다.', 'assistant');
+          }
+          break;
+        }
+        
+        case 'repeat': {
+          if (currentSummary) {
+            speak(currentSummary.bullets.join('. '));
+            addMessage('요약을 다시 읽어드립니다.', 'assistant');
+          } else {
+            addMessage('반복할 내용이 없습니다.', 'assistant');
+          }
+          break;
+        }
+        
+        case 'stop': {
+          stop();
+          addMessage('음성을 중지했습니다.', 'assistant');
+          break;
+        }
+        
+        default: {
+          // 일반 질문 처리
+          const summary = await summarize(input, 'generic');
+          setCurrentSummary(summary);
+          addMessage('질문에 대한 요약입니다.', 'assistant');
+          speak(summary.bullets.join('. '));
+        }
       }
-      alert("모든 키워드를 점자 디스플레이로 출력했습니다.");
-    } catch (e) {
-      alert("키워드 출력에 실패했습니다.");
+    } catch (error) {
+      console.error('처리 중 오류:', error);
+      addMessage('죄송합니다. 처리 중 오류가 발생했습니다.', 'assistant');
+    } finally {
+      setIsLoading(false);
     }
   };
-
+  
+  const handleKeywordClick = async (keyword: string) => {
+    addMessage(`${keyword} 키워드를 점자로 출력합니다.`, 'assistant');
+    await writePattern(keyword);
+  };
+  
+  const handleDetailClick = () => {
+    if (currentSummary) {
+      addMessage(currentSummary.longText, 'assistant');
+      speak(currentSummary.longText);
+    }
+  };
+  
+  const handleBrailleClick = async () => {
+    if (currentSummary) {
+      addMessage('모든 키워드를 점자로 출력합니다.', 'assistant');
+      for (const keyword of currentSummary.keywords) {
+        await writePattern(keyword);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  };
+  
   return (
-    <AppShellMobile title="정보 탐색">
-      <div className="p-4 space-y-4">
-        {/* 점자 디스플레이 연결 상태 */}
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${bleConnected ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-            <span className="text-sm font-medium">
-              점자 디스플레이: {bleConnected ? '연결됨' : '연결 안됨'}
-            </span>
-          </div>
-          <button 
-            onClick={handleConnectBLE}
-            className={`px-3 py-1 rounded-lg text-sm ${
-              bleConnected 
-                ? 'bg-green-100 text-green-700' 
-                : 'bg-blue-100 text-blue-700'
-            }`}
-          >
-            {bleConnected ? '연결됨' : '연결하기'}
-          </button>
-        </div>
-
-        <div className="flex gap-2">
-          <input className="flex-1 rounded-2xl border px-4 py-2" value={q} onChange={e=>setQ(e.target.value)} placeholder="무엇을 도와드릴까요?" />
-          <button onClick={ask} className="rounded-2xl bg-blue-600 text-white px-4 py-2">질문</button>
-        </div>
-
-        {chips.length>0 && (
-          <div className="rounded-2xl border bg-white p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm text-gray-500">핵심 키워드</div>
-              <button 
-                onClick={handleOutputKeywords}
-                className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-200"
+    <div className="min-h-screen bg-bg text-fg flex flex-col">
+      {/* 헤더 */}
+      <header className="bg-white border-b border-border shadow-toss">
+        <div className="max-w-md mx-auto px-4">
+          <div className="flex items-center justify-between py-4">
+            <div className="flex-1">
+              <h1 className="text-xl font-bold text-primary">정보탐색 모드</h1>
+              <p className="text-sm text-muted">ChatGPT 스타일로 정보를 탐색해보세요</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-2 bg-card rounded-xl">
+                <div 
+                  className={`w-3 h-3 rounded-full ${isConnected ? 'bg-success' : 'bg-muted'}`}
+                  aria-label={isConnected ? '점자 디스플레이 연결됨' : '점자 디스플레이 연결 안됨'}
+                />
+                <span className="text-xs text-muted">
+                  {isConnected ? '연결됨' : '연결 안됨'}
+                </span>
+              </div>
+              <button
+                onClick={connect}
+                className="px-3 py-2 text-sm bg-primary text-white rounded-xl hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary"
+                aria-label="점자 디스플레이 연결"
               >
-                📱 점자로 출력
+                연결
               </button>
             </div>
-            {chips.map((c,i)=><Chip key={i} word={c.word} cells={c.cells} />)}
           </div>
-        )}
-
-        {loading && <div className="text-gray-500">불러오는 중…</div>}
-        {err && <div className="text-red-500">{err}</div>}
-
-        <div className="space-y-3">
-          {items.map((n,idx)=>(
-            <div key={idx} className="rounded-2xl border bg-white p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div className="font-semibold flex-1">{n.title}</div>
-                <button 
-                  onClick={() => handleOutputToBraille(n.title)}
-                  className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg hover:bg-green-200"
-                >
-                  📱 점자출력
-                </button>
-              </div>
-              <div className="text-gray-600 text-sm mb-2">{n.summary}</div>
-              <div className="flex items-center justify-between">
-                {n.link ? <a className="text-blue-600 text-sm underline" href={n.link} target="_blank" rel="noreferrer">원문 보기</a> : null}
-                <button 
-                  onClick={() => handleOutputToBraille(n.summary)}
-                  className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-200"
-                >
-                  📱 요약 점자출력
-                </button>
+        </div>
+      </header>
+      
+      {/* 메시지 영역 */}
+      <main 
+        className="flex-1 overflow-y-auto bg-bg"
+        role="log"
+        aria-label="대화 로그"
+        aria-live="polite"
+      >
+        <div className="max-w-md mx-auto px-4 py-4 space-y-4 pb-32">
+          {messages.map((message) => (
+            <MessageBubble key={message.id} message={message} />
+          ))}
+          
+          {/* 요약 카드 */}
+          {currentSummary && (
+            <SummaryCard
+              summary={currentSummary}
+              onDetailClick={handleDetailClick}
+              onBrailleClick={handleBrailleClick}
+              onKeywordClick={handleKeywordClick}
+            />
+          )}
+          
+          {/* 로딩 표시 */}
+          {isLoading && (
+            <div className="flex justify-center py-8">
+              <div className="flex items-center gap-3 text-muted bg-white px-4 py-3 rounded-2xl shadow-toss">
+                <div className="animate-spin w-5 h-5 border-2 border-primary border-t-transparent rounded-full" />
+                <span>처리 중...</span>
               </div>
             </div>
-          ))}
+          )}
+          
+          <div ref={messagesEndRef} />
         </div>
-      </div>
-    </AppShellMobile>
+      </main>
+      
+      {/* 하단 입력바 */}
+      <ChatLikeInput
+        onSubmit={handleUserInput}
+        disabled={isLoading}
+        placeholder="메시지를 입력하거나 음성으로 말하세요..."
+      />
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from "react";
+// import React from "react";
 
 export function BrailleCell({dots=[0,0,0,0,0,0]}:{dots:number[]}){
   return (

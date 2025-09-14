@@ -1,15 +1,72 @@
-type Props = { cell: [number,number,number,number,number,number], size?: number };
-export default function BrailleCell({ cell, size=54 }: Props){
-  const on = (i:number)=> cell[i]===1;
-  const Dot = ({on}:{on:boolean}) => (
-    <span className={`inline-block rounded-full shadow ${on?'bg-blue-600':'bg-gray-200'}`}
-      style={{width:size/6, height:size/6}} />
-  );
+import React from 'react';
+
+interface BrailleCellProps {
+  pattern: boolean[]; // 6개 점의 활성화 상태 [1,2,3,4,5,6]
+  size?: 'normal' | 'large';
+  label?: string;
+  className?: string;
+  onPatternChange?: (pattern: boolean[]) => void;
+  interactive?: boolean;
+}
+
+export default function BrailleCell({ 
+  pattern, 
+  size = 'normal', 
+  label,
+  className = '',
+  onPatternChange,
+  interactive = false 
+}: BrailleCellProps) {
+  const dots = pattern.length === 6 ? pattern : [false, false, false, false, false, false];
+  
+  const handleDotClick = (index: number) => {
+    if (!interactive || !onPatternChange) return;
+    
+    const newPattern = [...dots];
+    newPattern[index] = !newPattern[index];
+    onPatternChange(newPattern);
+  };
+
+  const getAriaLabel = () => {
+    if (label) return label;
+    
+    const activeDots = dots.map((active, index) => active ? index + 1 : null).filter(Boolean);
+    if (activeDots.length === 0) return '빈 점자 셀';
+    
+    return `점자 셀, 활성 점: ${activeDots.join(', ')}번`;
+  };
+
   return (
-    <div className="grid grid-cols-2 gap-x-2 gap-y-2 p-2 rounded-xl bg-white shadow-sm border">
-      <Dot on={on(0)} /><Dot on={on(3)} />
-      <Dot on={on(1)} /><Dot on={on(4)} />
-      <Dot on={on(2)} /><Dot on={on(5)} />
+    <div className={`inline-flex flex-col items-center ${className}`}>
+      <div 
+        className={`braille-grid ${size === 'large' ? 'large' : ''}`}
+        role="img"
+        aria-label={getAriaLabel()}
+        tabIndex={interactive ? 0 : -1}
+      >
+        {dots.map((active, index) => (
+          <div
+            key={index}
+            className={`braille-dot ${active ? 'active' : ''}`}
+            onClick={() => handleDotClick(index)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleDotClick(index);
+              }
+            }}
+            tabIndex={interactive ? 0 : -1}
+            role={interactive ? 'button' : 'img'}
+            aria-label={`점 ${index + 1}번 ${active ? '활성' : '비활성'}`}
+            aria-pressed={active}
+          />
+        ))}
+      </div>
+      {label && (
+        <div className="mt-2 text-sm text-secondary" aria-live="polite">
+          {label}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import type { Cell } from "../lib/brailleLocal";
+import type { Cell } from "../lib/brailleMap";
 
 export default function BrailleDots({ cell, size=28 }: { cell: Cell; size?: number }) {
   const dot = (on:boolean, key:string, idx:number) => (
