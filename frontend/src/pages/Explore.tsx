@@ -1,0 +1,788 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Home, BookOpen, Search, RefreshCw, Type, ArrowLeft, Volume2, VolumeX } from 'lucide-react';
+import { ChatLikeInput } from '../components/input/ChatLikeInput';
+import { AnswerCard } from '../components/ui/AnswerCard';
+import { BrailleOutputPanel } from '../components/braille/BrailleOutputPanel';
+import ToastA11y from '../components/system/ToastA11y';
+import { useTTS } from '../hooks/useTTS';
+import useBrailleBLE from '../hooks/useBrailleBLE';
+import { useBraillePlayback } from '../hooks/useBraillePlayback';
+import useVoiceCommands from '../hooks/useVoiceCommands';
+import { askChat, askChatWithKeywords, type ChatResponse, fetchExplore, saveReview } from '../lib/api';
+import type { ChatMessage } from '../types';
+
+// function extractBulletsFromMarkdown(md?: string): string[] {
+//   if (!md) return [];
+//   const lines = md.split(/\r?\n/).map((l: string) => l.trim());
+//   const bulletRegex = /^(?:•|-|\*|\d+[.)])\s+(.*)$/;
+//   return lines.filter((line) => bulletRegex.test(line)).map((line) => {
+//     const match = line.match(bulletRegex);
+//     return match ? match[1] : line;
+//   });
+// }
+
+// function getSimpleTTS(res?: ChatResponse | null): string | undefined {
+//   if (!res) return;
+//   return (res.actions as any)?.simple_tts || (res as any).simple_tts;
+// }
+
+export default function Explore() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentBraille, setCurrentBraille] = useState<string[]>([]); // 현재 출력 중인 점자
+  const listRef = useRef<HTMLDivElement>(null);
+  
+  // 정보탐색 모드 상태
+  const [exploreData, setExploreData] = useState<{
+    answer: string;
+    news: any[];
+    query: string;
+  } | null>(null);
+  const [isExploreLoading, setIsExploreLoading] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const { speak } = useTTS();
+  const { isConnected, connect, disconnect } = useBrailleBLE();
+  const [isTTSEnabled, setIsTTSEnabled] = useState(true);
+  const braille = useBraillePlayback({
+    ble: {
+      serviceUUID: "0000180a-0000-1000-8000-00805f9b34fb",
+      characteristicUUID: "00002a00-0000-1000-8000-00805f9b34fb",
+    },
+  });
+
+  // 페이지 진입 시 자동 음성 안내
+  useEffect(() => {
+    const welcomeMessage = '정보 탐색 모드입니다. 궁금한 것을 물어보세요. 뉴스나 날씨 정보도 확인할 수 있습니다.';
+    
+    const timer = setTimeout(() => {
+      if (isTTSEnabled) {
+        speak(welcomeMessage);
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [speak, isTTSEnabled]);
+
+  // 뒤로가기 버튼 클릭 시 홈으로 이동
+  const handleBack = () => {
+    navigate('/');
+  };
+
+  // TTS 토글
+  const toggleTTS = () => {
+    setIsTTSEnabled((prev) => {
+      const next = !prev;
+      if (!next && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      return next;
+    });
+  };
+
+  // 네비게이션 활성 상태 확인
+  const isActive = (path: string) => location.pathname === path;
+
+  // 네비게이션 버튼 컴포넌트
+  const NavButton = ({
+    icon: Icon,
+    label,
+    onClick,
+    isActive,
+    ariaLabel,
+    ariaCurrent
+  }: {
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    onClick: () => void;
+    isActive: boolean;
+    ariaLabel: string;
+    ariaCurrent?: 'page' | undefined;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex flex-col items-center justify-center px-2.5 py-2.5 min-w-[52px] rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/50 active:scale-95 group touch-manipulation"
+      aria-label={ariaLabel}
+      aria-current={ariaCurrent}
+    >
+      {/* 활성 상태 배경 */}
+      {isActive && (
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-primary/8 via-primary/5 to-transparent" />
+      )}
+      
+      {/* 호버 배경 */}
+      {!isActive && (
+        <div className="absolute inset-0 rounded-xl bg-card/80 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+      )}
+      
+      {/* 활성 상태 상단 인디케이터 바 */}
+      {isActive && (
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-7 h-0.5 bg-primary rounded-full" />
+      )}
+      
+      {/* 아이콘 */}
+      <div className={`relative z-10 mb-1 transition-all duration-200 ${
+        isActive ? 'scale-110' : 'scale-100 group-hover:scale-105'
+      }`}>
+        <Icon 
+          className={`w-5 h-5 transition-colors duration-200 ${
+            isActive 
+              ? 'text-primary drop-shadow-sm' 
+              : 'text-muted/60 group-hover:text-fg/80'
+          }`} 
+          aria-hidden="true" 
+        />
+      </div>
+      
+      {/* 라벨 */}
+      <span 
+        className={`text-[10px] font-medium transition-all duration-200 relative z-10 leading-tight ${
+          isActive 
+            ? 'text-primary font-semibold' 
+            : 'text-muted/60 group-hover:text-fg/70'
+        }`}
+      >
+        {label}
+      </span>
+    </button>
+  );
+
+  // 새 메시지 렌더 시 맨 아래로 스크롤
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages, isLoading]);
+
+  // 점자 출력 핸들러 (점자 출력만)
+  const handleBrailleOutput = useCallback((keywords: string[]) => {
+    setCurrentBraille(keywords);
+    braille.enqueueKeywords(keywords);
+  }, [braille]);
+
+  // 복습하기 핸들러 (복습 목록에 저장 + 팝업 메시지)
+  const handleLearn = useCallback(async (keywords: string[]) => {
+    if (!keywords || keywords.length === 0) return;
+    
+    try {
+      setIsSaving(true);
+      console.log('[Explore] 복습하기 버튼 클릭, 키워드:', keywords);
+      let successCount = 0;
+      const savedKeywords: string[] = [];
+      
+      // 키워드를 복습 목록에 저장
+      for (const keyword of keywords) {
+        try {
+          const payload = {
+            type: 'word',
+            content: keyword,
+            text: keyword,
+            word: keyword,
+          };
+
+          const result = await saveReview('keyword', payload);
+          
+          if (result.ok) {
+            console.log(`[Explore] 키워드 "${keyword}" 저장 성공:`, result);
+            successCount++;
+            savedKeywords.push(keyword);
+          } else {
+            console.error(`[Explore] 키워드 "${keyword}" 저장 실패:`, result);
+          }
+        } catch (error) {
+          console.error(`[Explore] 키워드 "${keyword}" 저장 중 오류:`, error);
+        }
+      }
+      
+      if (successCount > 0) {
+        // 성공 메시지
+        const keywordText = savedKeywords.length <= 3 
+          ? savedKeywords.join(', ')
+          : `${savedKeywords.slice(0, 3).join(', ')} 외 ${savedKeywords.length - 3}개`;
+        const successMessage = `키워드 ${successCount}개가 복습 목록에 추가되었습니다: ${keywordText}`;
+        
+        // 팝업 메시지 표시
+        setToastMessage(successMessage);
+        setShowToast(true);
+        
+        // TTS 안내
+        await speak(`키워드 ${successCount}개가 복습 목록에 추가되었습니다.`);
+      } else {
+        // 실패 메시지
+        const errorMessage = '키워드 저장에 실패했습니다. 다시 시도해주세요.';
+        setToastMessage(errorMessage);
+        setShowToast(true);
+        await speak(errorMessage);
+      }
+      
+    } catch (error) {
+      console.error('[Explore] 키워드 복습 저장 실패:', error);
+      const errorMessage = '키워드 저장 중 오류가 발생했습니다.';
+      setToastMessage(errorMessage);
+      setShowToast(true);
+      await speak(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [speak]);
+
+  // AI 응답 공통 처리
+  const handleAiResponse = useCallback(async (res: ChatResponse) => {
+    // 키워드 3개까지만 큐 적재
+    const ks = (res?.keywords ?? [])
+      .filter((s: unknown): s is string => typeof s === 'string' && s.trim().length > 0)
+      .slice(0, 3);
+
+    // 응답에서 불릿 추출
+    // const answerText = normalizeAnswer(res);
+    // const bullets = extractBulletsFromMarkdown(answerText);
+
+    // 점자 큐 적재 (토글 ON일 때 훅이 자동 재생)
+    if (ks.length) braille.enqueueKeywords(ks);
+  }, [braille]);
+
+  // "자세히" 요청 처리
+  const handleDetail = useCallback(async (topic: string) => {
+    if (!topic) return;
+    
+    setIsLoading(true);
+    const typingId = `typing_${Date.now()}`;
+    
+    setMessages(p => [
+      ...p,
+      {
+        id: typingId,
+        role: 'assistant',
+        type: 'text',
+        text: '__typing__',
+        createdAt: Date.now(),
+      },
+    ]);
+
+    try {
+      // 기존 답변을 확장하는 프롬프트로 변경
+      const expandPrompt = `위에서 "${topic}"에 대해 간단히 설명했는데, 이제 더 자세하고 구체적으로 설명해주세요. 
+
+다음 내용을 포함해주세요:
+- 기본 개념과 정의
+- 주요 특징과 원리  
+- 실제 활용 사례나 예시
+- 관련된 중요 정보
+
+답변 후에 핵심 키워드 3개를 추출해서 "키워드: 키워드1, 키워드2, 키워드3" 형태로 끝에 추가해주세요.`;
+
+      const result = await askChatWithKeywords(expandPrompt);
+      
+      // typing indicator 제거
+      setMessages(p => p.filter(m => m.id !== typingId));
+
+      // Create response object for compatibility
+      const response = { answer: result.answer, keywords: result.keywords, ok: true };
+
+      // 공통 처리(키워드 큐, 불릿 추출)
+      await handleAiResponse(response);
+
+      // AI 응답을 메시지로 추가
+      const cardMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        type: 'text',
+        text: result.answer,
+        keywords: result.keywords,
+        createdAt: Date.now(),
+      };
+      setMessages(p => [...p, cardMsg]);
+
+      // TTS로 자동 낭독
+      await speak(result.answer);
+    } catch (error) {
+      console.error('자세히 요청 오류:', error);
+      setMessages(p => [
+        ...p.filter(m => m.id !== typingId),
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          type: 'text',
+          text: `죄송합니다. "${topic}"에 대한 자세한 설명을 가져오는 중 오류가 발생했습니다.`,
+          createdAt: Date.now(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [askChatWithKeywords, handleAiResponse, speak]);
+
+  // 정보탐색 모드 처리
+  const handleExplore = useCallback(async (query: string) => {
+    setIsExploreLoading(true);
+    try {
+      const data = await fetchExplore(query);
+      setExploreData({
+        answer: data.answer ?? "",
+        news: data.news ?? [],
+        query: data.query ?? ""
+      });
+      
+      // TTS로 자동 낭독
+      if (data.answer) {
+        await speak(data.answer);
+      }
+    } catch (error) {
+      console.error('정보탐색 오류:', error);
+      const errorMessage = `정보탐색 중 오류가 발생했습니다: ${error}`;
+      setExploreData({
+        answer: errorMessage,
+        news: [],
+        query: query
+      });
+      
+      // 오류 메시지도 TTS로 읽기
+      await speak(errorMessage);
+    } finally {
+      setIsExploreLoading(false);
+    }
+  }, [speak]);
+
+  // 메시지 전송 처리
+  const handleSubmit = useCallback(async (userText: string) => {
+    if (!userText.trim() || isLoading) return;
+
+    // 사용자 메시지 추가
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      type: 'text',
+      text: userText,
+      createdAt: Date.now(),
+    };
+    setMessages(p => [...p, userMsg]);
+
+    setIsLoading(true);
+    const typingId = `typing_${Date.now()}`;
+    
+    setMessages(p => [
+      ...p,
+      {
+        id: typingId,
+        role: 'assistant',
+        type: 'text',
+        text: '__typing__',
+        createdAt: Date.now(),
+      },
+    ]);
+
+    try {
+      // AI API 호출 - 키워드와 함께
+      const result = await askChatWithKeywords(userText);
+      if (import.meta?.env?.DEV) {
+        console.debug("[Explore] result=", result);
+      }
+
+      // typing indicator 제거
+      setMessages(p => p.filter(m => m.id !== typingId));
+
+      // Create response object for compatibility
+      const response = { answer: result.answer, keywords: result.keywords, ok: true };
+
+      // 공통 처리(키워드 큐, 불릿 추출)
+      await handleAiResponse(response);
+
+      // AI 응답을 메시지로 추가
+      const cardMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        type: 'text',
+        text: result.answer,
+        keywords: result.keywords,
+        createdAt: Date.now(),
+      };
+      setMessages(p => [...p, cardMsg]);
+
+      // TTS로 자동 낭독
+      await speak(result.answer);
+    } catch (error) {
+      console.error('AI 응답 오류:', error);
+      setMessages(p => [
+        ...p.filter(m => m.id !== typingId),
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          type: 'text',
+          text: '죄송합니다. 응답을 생성하는 중 오류가 발생했습니다.',
+          createdAt: Date.now(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, askChat, handleAiResponse, speak]);
+
+  // 음성 명령 처리
+  useVoiceCommands({
+    // 네비게이션
+    home: () => {
+      window.location.href = '/';
+    },
+    back: () => {
+      window.history.back();
+    },
+    
+    // 점자 제어
+    brailleOn: () => braille.setEnabled(true),
+    brailleOff: () => braille.setEnabled(false),
+    brailleConnect: () => connect(),
+    brailleDisconnect: () => disconnect(),
+    
+    // 재생 제어
+    next: () => braille.next(),
+    repeat: () => braille.repeat(),
+    start: () => braille.start(),
+    stop: () => braille.pause(),
+    
+    // 상세 정보
+    detail: () => {
+      // 마지막 assistant 메시지의 첫 번째 키워드로 자세히 요청
+      const lastAssistantMsg = messages
+        .filter(m => m.role === 'assistant' && m.keywords && m.keywords.length > 0)
+        .pop();
+      if (lastAssistantMsg?.keywords?.[0]) {
+        handleDetail(lastAssistantMsg.keywords[0]);
+      }
+    },
+    
+    // 정보탐색
+    news: () => handleExplore("오늘 뉴스"),
+    weather: () => handleExplore("오늘 날씨"),
+    
+    // 도움말
+    help: () => {
+      const helpText = '사용 가능한 음성 명령어: 홈, 뒤로, 점자켜, 점자꺼, 점자연결, 점자해제, 다음, 반복, 시작, 정지, 자세히, 뉴스, 날씨, 도움말';
+      speak(helpText);
+    },
+    
+    // TTS 제어
+    speak: (text: string) => speak(text),
+    mute: () => {
+      // TTS 중지 로직 추가 가능
+    },
+    unmute: () => {
+      speak('음성이 활성화되었습니다.');
+    },
+    
+    // 입력 제어
+    submit: () => {
+      // ChatLikeInput에서 처리되므로 여기서는 빈 핸들러
+      // 필요시 추가 로직 구현 가능
+    },
+    clear: () => {
+      // ChatLikeInput에서 처리
+    },
+  });
+
+  return (
+    <div className="flex flex-col min-h-screen bg-bg text-fg">
+      {/* 헤더는 AppShellMobile 없이 직접 구현 */}
+      <div className="sticky top-0 z-50 bg-white/98 backdrop-blur-xl border-b border-border/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+        <div className="max-w-md mx-auto">
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <div className="w-11 flex items-center">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="p-2.5 -ml-2 rounded-xl bg-card/60 hover:bg-card border border-border/40 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 active:scale-95 touch-manipulation"
+                aria-label="뒤로 가기"
+              >
+                <ArrowLeft className="w-5 h-5 text-fg" aria-hidden="true" />
+              </button>
+            </div>
+            <h1 className="text-base font-bold text-fg flex-1 text-center tracking-tight px-2">
+              정보 탐색
+            </h1>
+            <div className="w-11 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={toggleTTS}
+                className={`p-2.5 -mr-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all duration-200 active:scale-95 ${
+                  isTTSEnabled 
+                    ? 'bg-primary text-white border-primary/20 hover:bg-primary/90 shadow-sm' 
+                    : 'bg-card/50 text-muted/60 border-border/50 hover:bg-card hover:border-border'
+                }`}
+                aria-label={isTTSEnabled ? '음성 안내 끄기' : '음성 안내 켜기'}
+                aria-pressed={isTTSEnabled}
+              >
+                {isTTSEnabled ? (
+                  <Volume2 className="w-4 h-4" aria-hidden="true" />
+                ) : (
+                  <VolumeX className="w-4 h-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 상단 점자 출력 패널 - Sticky */}
+      <BrailleOutputPanel 
+        currentBraille={currentBraille}
+        className="sticky top-[60px] z-20"
+      />
+
+      {/* 상단 컨트롤 바 */}
+      <div className="bg-white border-b border-border px-4 py-3">
+        <div className="max-w-md mx-auto flex flex-wrap items-center gap-2">
+          {/* BLE 연결 상태 */}
+          <button
+            onClick={async () => {
+              try {
+                if (isConnected) {
+                  disconnect();
+                } else {
+                  await connect();
+                }
+              } catch (error) {
+                console.log("BLE 연결 처리:", error);
+              }
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 active:scale-95 ${
+              isConnected
+                ? 'bg-success text-white hover:bg-success/90 shadow-sm'
+                : 'bg-card text-fg hover:bg-border border border-border'
+            }`}
+            aria-pressed={isConnected}
+          >
+            {isConnected ? '🔗 연결됨' : '🔌 연결'}
+          </button>
+
+          {/* 점자 출력 토글 */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={braille.enabled}
+              onChange={(e) => braille.setEnabled(e.target.checked)}
+              className="w-4 h-4 text-primary rounded focus:ring-primary"
+              aria-label="점자 출력 토글"
+            />
+            <span className="text-xs font-medium text-fg">점자 출력</span>
+          </label>
+
+          {/* 빠른 액션 버튼들 */}
+          <div className="ml-auto flex gap-1.5">
+            <button
+              onClick={() => handleExplore("오늘 뉴스")}
+              disabled={isExploreLoading}
+              className="px-2.5 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+            >
+              📰 뉴스
+            </button>
+            
+            {/* 점자 제어 버튼들 */}
+            <button
+              onClick={() => braille.next()}
+              disabled={!braille.queue.length}
+              className="px-2 py-1.5 rounded-lg bg-success/10 text-success text-xs font-medium hover:bg-success/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              title="다음"
+            >
+              ▶
+            </button>
+            <button
+              onClick={() => braille.repeat()}
+              disabled={!braille.queue.length}
+              className="px-2 py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              title="반복"
+            >
+              ⟳
+            </button>
+            <button
+              onClick={() => braille.pause()}
+              disabled={!braille.isPlaying}
+              className="px-2 py-1.5 rounded-lg bg-danger/10 text-danger text-xs font-medium hover:bg-danger/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              title="정지"
+            >
+              ⏸
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 메인 콘텐츠 영역 */}
+      <div className="flex-1 overflow-hidden pb-24">
+        <div 
+          ref={listRef}
+          className="h-full overflow-y-auto px-4 py-6"
+        >
+          <div className="max-w-md mx-auto space-y-6">
+            {/* 정보탐색 결과 */}
+            {exploreData && (
+              <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-lg">🔍</span>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    정보탐색: {exploreData.query}
+                  </h3>
+                </div>
+                
+                <div className="mb-4">
+                  <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                    {exploreData.answer}
+                  </p>
+                </div>
+
+                {exploreData.news.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-600 mb-3">관련 뉴스</h4>
+                    <div className="space-y-3">
+                      {exploreData.news.slice(0, 3).map((news, index) => (
+                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                          <a 
+                            href={news.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="block group"
+                          >
+                            <h5 className="font-medium text-gray-800 group-hover:text-blue-600 transition-colors line-clamp-2">
+                              {news.title?.replace(/<[^>]*>/g, '') || '제목 없음'}
+                            </h5>
+                            <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                              {news.description?.replace(/<[^>]*>/g, '') || '설명 없음'}
+                            </p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className="text-xs text-gray-500">
+                                {news.pubDate ? new Date(news.pubDate).toLocaleDateString('ko-KR') : '날짜 없음'}
+                              </span>
+                              <span className="text-xs text-blue-600 group-hover:text-blue-800">
+                                원문 보기 →
+                              </span>
+                            </div>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 채팅 메시지들 */}
+            {messages.map((m) => {
+              // 타이핑 인디케이터
+              if (m.text === '__typing__') {
+                return (
+                  <div key={m.id} className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
+                    <div className="flex items-center gap-2" aria-label="답변 생성 중">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:120ms]" />
+                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce [animation-delay:240ms]" />
+                      <span className="text-sm text-gray-500 ml-2">답변을 생성하고 있습니다...</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              // 사용자 메시지
+              if (m.role === 'user') {
+                return (
+                  <div key={m.id} className="flex justify-end">
+                    <div className="bg-blue-600 text-white rounded-xl px-4 py-3 max-w-[80%] shadow-md">
+                      <p className="text-sm leading-relaxed">{m.text}</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              // AI 답변 카드
+              return (
+                <AnswerCard
+                  key={m.id}
+                  text={m.text || ''}
+                  keywords={m.keywords || []}
+                  onBrailleOutput={handleBrailleOutput}
+                  onLearn={handleLearn}
+                />
+              );
+            })}
+
+            {/* 로딩 상태는 __typing__ 메시지로 처리되므로 여기서는 제거 */}
+          </div>
+        </div>
+      </div>
+
+      {/* 하단 입력 영역 (고정 위치, 네비게이션 바 위) */}
+      <div className="fixed bottom-24 left-0 right-0 z-40 bg-white/98 backdrop-blur-xl border-t border-border/60 shadow-lg">
+        <div className="max-w-md mx-auto px-4 py-3">
+          <ChatLikeInput
+            onSubmit={handleSubmit}
+            disabled={isLoading}
+            placeholder="궁금한 것을 물어보세요..."
+          />
+        </div>
+      </div>
+
+      {/* 하단 네비게이션 바 */}
+      <nav 
+        className="sticky bottom-0 z-50 bg-white/98 backdrop-blur-xl border-t border-border/60 shadow-[0_-2px_12px_rgba(0,0,0,0.05)]" 
+        role="navigation" 
+        aria-label="메인 네비게이션"
+      >
+        <div className="max-w-md mx-auto px-3 py-3">
+          <div className="flex items-center justify-around gap-1">
+            <NavButton
+              icon={Home}
+              label="홈"
+              onClick={() => navigate('/')}
+              isActive={isActive('/')}
+              ariaLabel="홈으로 가기"
+              ariaCurrent={isActive('/') ? 'page' : undefined}
+            />
+            <NavButton
+              icon={BookOpen}
+              label="학습"
+              onClick={() => navigate('/learn')}
+              isActive={isActive('/learn')}
+              ariaLabel="점자 학습"
+              ariaCurrent={isActive('/learn') ? 'page' : undefined}
+            />
+            <NavButton
+              icon={Search}
+              label="탐색"
+              onClick={() => navigate('/explore')}
+              isActive={isActive('/explore')}
+              ariaLabel="정보 탐색"
+              ariaCurrent={isActive('/explore') ? 'page' : undefined}
+            />
+            <NavButton
+              icon={RefreshCw}
+              label="복습"
+              onClick={() => navigate('/review')}
+              isActive={isActive('/review')}
+              ariaLabel="복습하기"
+              ariaCurrent={isActive('/review') ? 'page' : undefined}
+            />
+            <NavButton
+              icon={Type}
+              label="자유"
+              onClick={() => navigate('/free-convert')}
+              isActive={isActive('/free-convert') || isActive('/learn/free')}
+              ariaLabel="자유 변환"
+              ariaCurrent={(isActive('/free-convert') || isActive('/learn/free')) ? 'page' : undefined}
+            />
+          </div>
+        </div>
+      </nav>
+
+      {/* 토스트 알림 */}
+      <ToastA11y
+        message={toastMessage}
+        isVisible={showToast}
+        duration={3000}
+        onClose={() => setShowToast(false)}
+        position="top"
+      />
+    </div>
+  );
+}
