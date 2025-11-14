@@ -1,0 +1,850 @@
+[
+  {
+    "kind": "wrong",
+    "payload": {
+      "type": "char",
+      "content": "ㄱ",
+      "correct_answer": "기역",
+      "user_answer": "ㄴ",
+      "cells": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "questionCells": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "timestamp": "2025-09-17T09:30:04.323837"
+    },
+    "timestamp": "2025-09-17T09:30:04.323837",
+    "id": 1
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "type": "char",
+      "content": "ㄴ",
+      "correct_answer": "니은",
+      "user_answer": "ㄷ",
+      "cells": [
+        [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "questionCells": [
+        [
+          1,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "timestamp": "2025-09-17T09:30:04.323837"
+    },
+    "timestamp": "2025-09-17T09:30:04.323837",
+    "id": 2
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "type": "char",
+      "content": "ㅏ",
+      "correct_answer": "아",
+      "user_answer": "ㅓ",
+      "cells": [
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "questionCells": [
+        [
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ],
+      "timestamp": "2025-09-17T09:30:04.323837"
+    },
+    "timestamp": "2025-09-17T09:30:04.323837",
+    "id": 3
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "학교",
+      "user": "ㅋ",
+      "idx": 0,
+      "questionText": "학교",
+      "questionCells": [
+        [
+          0,
+          1,
+          1,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          1
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:30:57.823587",
+    "id": 4
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "친구",
+      "user": "ㅋ",
+      "idx": 1,
+      "questionText": "친구",
+      "questionCells": [
+        [
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          1,
+          0,
+          1,
+          1
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:30:59.423429",
+    "id": 5
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "사랑",
+      "user": "ㅋ",
+      "idx": 2,
+      "questionText": "사랑",
+      "questionCells": [
+        [
+          0,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:31:00.928040",
+    "id": 6
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "바다",
+      "user": "ㅋ",
+      "idx": 3,
+      "questionText": "바다",
+      "questionCells": [
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:31:02.419429",
+    "id": 7
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "연필",
+      "user": "ㅋ",
+      "idx": 4,
+      "questionText": "연필",
+      "questionCells": [
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:31:04.127212",
+    "id": 8
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "책상",
+      "user": "ㅋ",
+      "idx": 5,
+      "questionText": "책상",
+      "questionCells": [
+        [
+          0,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:31:05.759364",
+    "id": 9
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "의자",
+      "user": "ㅋ",
+      "idx": 6,
+      "questionText": "의자",
+      "questionCells": [
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:31:07.560613",
+    "id": 10
+  },
+  {
+    "kind": "wrong",
+    "payload": {
+      "mode": "word",
+      "expected": "가방",
+      "user": "ㅋ",
+      "idx": 7,
+      "questionText": "가방",
+      "questionCells": [
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          1,
+          0
+        ]
+      ]
+    },
+    "timestamp": "2025-09-17T09:31:09.144009",
+    "id": 11
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "블록체인",
+      "correct_answer": "블록체인",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T00:57:17.422Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T09:57:17.425069",
+    "id": 12
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "분산원장 기술",
+      "correct_answer": "분산원장 기술",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T00:57:17.438Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T09:57:17.440238",
+    "id": 13
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "스마트 계약",
+      "correct_answer": "스마트 계약",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T00:57:17.442Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T09:57:17.443971",
+    "id": 14
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "블록체인",
+      "correct_answer": "블록체인",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:03:09.037Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:03:09.040201",
+    "id": 15
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "탈중앙화",
+      "correct_answer": "탈중앙화",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:03:09.048Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:03:09.049692",
+    "id": 16
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "스마트 계약",
+      "correct_answer": "스마트 계약",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:03:09.052Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:03:09.053395",
+    "id": 17
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "블록체인",
+      "correct_answer": "블록체인",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:07:40.093Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:07:40.096132",
+    "id": 18
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "분산 원장",
+      "correct_answer": "분산 원장",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:07:40.104Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:07:40.106492",
+    "id": 19
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "스마트 계약",
+      "correct_answer": "스마트 계약",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:07:40.107Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:07:40.108524",
+    "id": 20
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "블록체인",
+      "correct_answer": "블록체인",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:07:58.106Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:07:58.108714",
+    "id": 21
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "분산 원장",
+      "correct_answer": "분산 원장",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:07:58.121Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:07:58.123658",
+    "id": 22
+  },
+  {
+    "kind": "keyword",
+    "payload": {
+      "type": "keyword",
+      "content": "스마트 계약",
+      "correct_answer": "스마트 계약",
+      "user_answer": "",
+      "cells": [],
+      "questionCells": [],
+      "timestamp": "2025-09-17T01:07:58.124Z",
+      "source": "explore",
+      "query": ""
+    },
+    "timestamp": "2025-09-17T10:07:58.126750",
+    "id": 23
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:05.809310",
+    "id": 24
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:10.025873",
+    "id": 25
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:13.347499",
+    "id": 26
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:15.969254",
+    "id": 27
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:18.437135",
+    "id": 28
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:23.424707",
+    "id": 29
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:25.708405",
+    "id": 30
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:27.702522",
+    "id": 31
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:29.762050",
+    "id": 32
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:31.895858",
+    "id": 33
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:34.025241",
+    "id": 34
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:36.214628",
+    "id": 35
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:38.447413",
+    "id": 36
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:53:40.717466",
+    "id": 37
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-09-17T12:54:44.189933",
+    "id": 38
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-10-22T14:14:24.231121",
+    "id": 39
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-10-22T14:14:29.843240",
+    "id": 40
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-10-22T14:14:31.450318",
+    "id": 41
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-10-22T14:14:31.791472",
+    "id": 42
+  },
+  {
+    "kind": "wrong",
+    "payload": {},
+    "timestamp": "2025-10-22T14:14:32.102042",
+    "id": 43
+  }
+]
