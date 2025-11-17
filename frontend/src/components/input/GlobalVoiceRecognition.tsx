@@ -3,8 +3,9 @@ import useSTT from '../../hooks/useSTT';
 import useVoiceCommands from '../../hooks/useVoiceCommands';
 import { useNavigate, useLocation } from 'react-router-dom';
 import useTTS from '../../hooks/useTTS';
-import VoiceEventBus from '../../lib/voice/VoiceEventBus';
+import VoiceEventBus, { onMicIntent } from '../../lib/voice/VoiceEventBus';
 import micMode from '../../lib/voice/MicMode';
+import { useVoiceStore } from '../../store/voice';
 
 interface GlobalVoiceRecognitionProps {
   onTranscript?: (text: string) => void;
@@ -263,12 +264,11 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     
     // 중복 처리 방지 완화: 같은 텍스트가 1초 이내에 연속으로 오면 무시 (더 짧은 시간)
     const now = Date.now();
-    const lastTime = (window as any).__lastVoiceTime || 0;
-    if (transcript === lastTranscriptRef.current && transcriptProcessedRef.current && (now - lastTime < 1000)) {
+    const { lastTranscriptTime, lastTranscriptText } = useVoiceStore.getState();
+    if (transcript === lastTranscriptText && transcriptProcessedRef.current && (now - lastTranscriptTime < 1000)) {
       console.log('[GlobalVoice] 중복 인식 무시:', transcript);
       return;
     }
-    (window as any).__lastVoiceTime = now;
     
     // 새로운 텍스트인 경우에만 처리
     if (transcript !== lastTranscriptRef.current) {
@@ -409,7 +409,7 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
 
   // MicMode intents → 실제 STT start/stop 수행
   useEffect(() => {
-    const unSubStart = VoiceEventBus.onMicIntent((e) => {
+    const unSubStart = onMicIntent((e) => {
       if (e?.action === 'start') safeStart();
       if (e?.action === 'stop') safeStop();
     });

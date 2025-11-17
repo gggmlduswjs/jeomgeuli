@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import VoiceService from "../../services/VoiceService";
+import { useVoiceStore } from "../../store/voice";
 
 type Props = {
   onResult?: (text: string) => void;
@@ -6,116 +8,56 @@ type Props = {
   label?: string; // 접근성 라벨 커스터마이즈
 };
 
-// 최소한의 타입 정의 (벤더 프리픽스 포함)
-type VendorSpeechRecognition = {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  continuous: boolean;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: ((ev: any) => void) | null;
-  onresult: ((ev: any) => void) | null;
-  start: () => void;
-  stop: () => void;
-  abort?: () => void;
-};
-
-type SpeechRecognitionCtor = new () => VendorSpeechRecognition;
-
-function getRecognitionCtor(): SpeechRecognitionCtor | null {
-  if (typeof window === "undefined") return null;
-  const w = window as any;
-  return (w.webkitSpeechRecognition || w.SpeechRecognition || null) as SpeechRecognitionCtor | null;
-}
-
 export default function MicButton({ onResult, className = "", label = "음성 입력" }: Props) {
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const recRef = useRef<VendorSpeechRecognition | null>(null);
+  const isListening = useVoiceStore(state => state.isListening);
+  const transcript = useVoiceStore(state => state.transcript);
+  const error = useVoiceStore(state => state.sttError);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const Recognition = useMemo(() => getRecognitionCtor(), []);
-  const isSupported = !!Recognition;
-
-  const start = () => {
-    if (!isSupported) {
-      console.warn('[MicButton] 브라우저가 음성 인식을 지원하지 않습니다.');
-      setError("이 브라우저는 음성 인식을 지원하지 않습니다.");
-      onResult?.("");
-      return;
+  // STT 결과 처리
+  useEffect(() => {
+    if (transcript && onResult) {
+      onResult(transcript);
     }
-    if (listening) {
-      console.log('[MicButton] 이미 음성 인식이 진행 중입니다.');
-      return; // 중복 호출 방지
-    }
+  }, [transcript, onResult]);
 
+  // 에러 처리
+  useEffect(() => {
+    if (error) {
+      setLocalError(error);
+    } else {
+      setLocalError(null);
+    }
+  }, [error]);
+
+  const start = async () => {
     try {
       console.log('[MicButton] 음성 인식 시작 시도...');
-      const recognition = new Recognition!();
-      recognition.lang = "ko-KR";
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      recognition.continuous = false;
-
-      recognition.onstart = () => {
-        console.log('[MicButton] 음성 인식 시작됨');
-        setError(null);
-        setListening(true);
-        setTranscript("");
-      };
-
-      recognition.onresult = (event: any) => {
-        const text = event?.results?.[0]?.[0]?.transcript ?? "";
-        const confidence = event?.results?.[0]?.[0]?.confidence ?? 0;
-        console.log(`[MicButton] 인식 결과: "${text}" (신뢰도: ${(confidence * 100).toFixed(1)}%)`);
-        setTranscript(text);
-        onResult?.(text);
-      };
-
-      recognition.onerror = (event: any) => {
-        const code = event?.error ?? "unknown";
-        // 참고: 'no-speech', 'audio-capture', 'not-allowed', 'aborted', 'network' 등
-        console.error(`[MicButton] 오류 발생: ${code}`);
-        setError(String(code));
-      };
-
-      recognition.onend = () => {
-        console.log('[MicButton] 음성 인식 종료됨');
-        setListening(false);
-        // 인스턴스 정리
-        recRef.current = null;
-      };
-
-      recRef.current = recognition;
-      recognition.start();
+      await VoiceService.startSTT({
+        onResult: (text) => {
+          console.log(`[MicButton] 인식 결과: "${text}"`);
+          onResult?.(text);
+        },
+        onError: (errorMsg) => {
+          console.error(`[MicButton] 오류 발생: ${errorMsg}`);
+          setLocalError(errorMsg);
+        },
+        autoStop: true,
+      });
     } catch (err) {
-      console.warn("Failed to start speech recognition:", err);
-      setListening(false);
-      setError("start_failed");
+      console.warn('[MicButton] 음성 인식 시작 실패:', err);
+      setLocalError("음성 인식을 시작할 수 없습니다.");
       onResult?.("");
     }
   };
 
   const stop = () => {
     console.log('[MicButton] 음성 인식 중지 요청');
-    const rec = recRef.current;
-    try {
-      if (rec) {
-        // stop()은 결과를 마무리하고 onend 호출, abort()는 즉시 중단
-        if (typeof rec.abort === "function") rec.abort();
-        else rec.stop();
-      }
-    } catch (e) {
-      console.warn('[MicButton] 중지 중 오류:', e);
-    } finally {
-      setListening(false);
-      recRef.current = null;
-    }
+    VoiceService.stopSTT();
   };
 
   const handleClick = () => {
-    if (listening) {
+    if (isListening) {
       console.log('[MicButton] 마이크 버튼 클릭: 중지');
       stop();
     } else {
@@ -124,17 +66,15 @@ export default function MicButton({ onResult, className = "", label = "음성 �
     }
   };
 
-  // 언마운트/리렌더 정리
+  // 언마운트 시 정리
   useEffect(() => {
     return () => {
-      try {
-        stop();
-      } catch {}
+      VoiceService.stopSTT();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const disabled = (!isSupported) || (listening && !recRef.current);
+  const displayError = localError || error;
+  const disabled = !!displayError;
 
   return (
     <div className="inline-flex flex-col items-center">
@@ -143,15 +83,15 @@ export default function MicButton({ onResult, className = "", label = "음성 �
         onClick={handleClick}
         disabled={disabled}
         role="switch"
-        aria-checked={listening}
+        aria-checked={isListening}
         aria-label={label}
         className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2
-          ${listening ? "bg-red-500 text-white animate-pulse" : "bg-accent text-primary"}
+          ${isListening ? "bg-red-500 text-white animate-pulse" : "bg-accent text-primary"}
           ${disabled ? "opacity-50 cursor-not-allowed" : ""}
           ${className}
         `}
       >
-        {listening ? (
+        {isListening ? (
           <div aria-hidden className="w-6 h-6 bg-white/90 rounded-full" />
         ) : (
           // 마이크 아이콘 (SVG)
@@ -164,19 +104,19 @@ export default function MicButton({ onResult, className = "", label = "음성 �
 
       {/* 상태 텍스트 (스크린리더용) */}
       <span className="sr-only" aria-live="polite">
-        {listening ? "음성 입력 중" : "음성 대기"}
+        {isListening ? "음성 입력 중" : "음성 대기"}
       </span>
 
       {/* 오류 메시지 (필요시 UI로 노출) */}
-      {error && (
+      {displayError && (
         <span className="mt-2 text-xs text-red-600" aria-live="polite">
-          {error === "not-allowed"
+          {displayError.includes("권한")
             ? "마이크 권한이 거부되었습니다."
-            : error === "no-speech"
+            : displayError.includes("감지")
             ? "음성이 감지되지 않았습니다."
-            : error === "audio-capture"
+            : displayError.includes("마이크")
             ? "마이크가 감지되지 않았습니다."
-            : "음성 인식 오류가 발생했습니다."}
+            : displayError}
         </span>
       )}
 

@@ -47,6 +47,16 @@
 - Python 3.8+
 - Google Gemini API Key
 
+### PWA 설치 (모바일)
+- **Android**: Chrome에서 사이트 접속 후 "홈 화면에 추가"
+- **iOS**: Safari에서 사이트 접속 후 "홈 화면에 추가"
+- 자세한 내용: [PWA 설치 가이드](./docs/PWA_SETUP.md)
+
+### 하드웨어 연동 (점자 디스플레이)
+- BLE 점자 디스플레이와 연동 가능
+- 상용 제품 사용: [하드웨어 연동 가이드](./docs/HARDWARE_INTEGRATION.md)
+- 직접 제작: [Arduino 펌웨어 개발 가이드](./docs/ARDUINO_FIRMWARE.md)
+
 ### 1. 저장소 클론
 \`\`\`bash
 git clone <repository-url>

@@ -9,6 +9,8 @@ import { normalizeCells, type Cell } from "@/lib/brailleSafe";
 import { localToBrailleCells } from "@/lib/braille";
 import useTTS from '../hooks/useTTS';
 import useVoiceCommands from '../hooks/useVoiceCommands';
+import VoiceService from '../services/VoiceService';
+import { useVoiceStore } from '../store/voice';
 
 // 🧩 유틸: 어떤 형태로 와도 6튜플로 변환
 function toTuple(x: any): Cell {
@@ -125,8 +127,9 @@ export default function Quiz() {
   const [result, setResult] = useState<null | { ok: boolean; answer: string }>(null);
 
   // STT
-  const [sttOn, setSttOn] = useState(false);
-  const recRef = useRef<any>(null);
+  // STT - VoiceService 사용
+  const isListening = useVoiceStore(state => state.isListening);
+  const transcript = useVoiceStore(state => state.transcript);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 페이지 진입 시 자동 음성 안내
@@ -223,54 +226,40 @@ export default function Quiz() {
     return () => { cancelled = true; };
   }, [cur, mode]);
 
-  // STT 초기화
+  // STT 결과 처리 - VoiceService 사용
   useEffect(() => {
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    console.log('[Quiz] SpeechRecognition available:', !!SR);
-    if (!SR) {
-      console.log('[Quiz] SpeechRecognition not supported');
-      return;
-    }
-    const r: any = new SR();
-    r.lang = "ko-KR";
-    r.continuous = false;
-    r.interimResults = false;
-    r.onresult = (e: SpeechRecognitionEvent) => {
-      const t = Array.from(e.results).map(r => r[0].transcript).join("").trim();
-      console.log('[Quiz] STT result:', t);
-      setUser(t);
+    if (transcript) {
+      console.log('[Quiz] STT result:', transcript);
+      setUser(transcript);
       // 인식 끝나면 자동 제출(원하면 해제 가능)
-      setTimeout(() => onSubmit(t), 50);
-    };
-    r.onerror = (e: any) => {
-      console.log('[Quiz] STT error:', e.error);
-      setSttOn(false);
-    };
-    r.onend = () => {
-      console.log('[Quiz] STT ended');
-      setSttOn(false);
-    };
-    recRef.current = r;
-    return () => { try { r.abort(); } catch {} };
-  }, []);
+      setTimeout(() => onSubmit(transcript), 50);
+    }
+  }, [transcript]);
 
-  const startSTT = () => { 
-    try { 
+  const startSTT = async () => {
+    try {
       console.log('[Quiz] Starting STT...');
-      recRef.current?.start(); 
-      setSttOn(true); 
+      await VoiceService.startSTT({
+        onResult: (text) => {
+          console.log('[Quiz] STT result:', text);
+          setUser(text);
+          setTimeout(() => onSubmit(text), 50);
+        },
+        onError: (error) => {
+          console.error('[Quiz] STT error:', error);
+          speak('음성 인식에 실패했습니다. 다시 시도해주세요.');
+        },
+        autoStop: true,
+      });
     } catch (e) {
-      console.log('[Quiz] STT start error:', e);
+      console.error('[Quiz] STT start error:', e);
+      speak('음성 인식을 시작할 수 없습니다.');
     }
   };
-  const stopSTT  = () => { 
-    try { 
-      console.log('[Quiz] Stopping STT...');
-      recRef.current?.stop();  
-      setSttOn(false);
-    } catch (e) {
-      console.log('[Quiz] STT stop error:', e);
-    }
+
+  const stopSTT = () => {
+    console.log('[Quiz] Stopping STT...');
+    VoiceService.stopSTT();
   };
 
   // TTS는 useTTS 훅에서 가져옴
@@ -305,7 +294,7 @@ export default function Quiz() {
       speakPrompt();
     },
     stop: () => {
-      if (sttOn) stopSTT();
+      if (isListening) stopSTT();
     },
   });
 
@@ -444,12 +433,12 @@ export default function Quiz() {
 
               {/* 음성 입력 토글 */}
               <button
-                onClick={sttOn ? stopSTT : startSTT}
-                className={`px-4 py-3 rounded-2xl ${sttOn ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary`}
-                aria-pressed={sttOn}
+                onClick={isListening ? stopSTT : startSTT}
+                className={`px-4 py-3 rounded-2xl ${isListening ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary`}
+                aria-pressed={isListening}
                 title="음성으로 정답 말하기(예: 디귿)"
               >
-                {sttOn ? <><MicOff className="inline w-4 h-4 mr-1" /> 끄기</> : <><Mic className="inline w-4 h-4 mr-1" /> 음성 입력</>}
+                {isListening ? <><MicOff className="inline w-4 h-4 mr-1" /> 끄기</> : <><Mic className="inline w-4 h-4 mr-1" /> 음성 입력</>}
               </button>
 
               <button

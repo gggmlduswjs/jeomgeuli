@@ -13,7 +13,7 @@ export function useBraillePlayback(opts: UseBraillePlaybackOptions = {}) {
   } = opts;
 
   // BLE 훅
-  const { isConnected, writePattern } = useBrailleBLE();
+  const { isConnected, writeText } = useBrailleBLE();
 
   // 상태
   const [enabled, setEnabled] = useState(false);
@@ -85,16 +85,21 @@ export function useBraillePlayback(opts: UseBraillePlaybackOptions = {}) {
         // 데모: 표시만 하고 기다림
         await new Promise((r) => setTimeout(r, delayMs));
       } else {
-        // 실제 BLE 출력
-        await writePattern(word.split('').map(c => c.charCodeAt(0))); // 내부에서 API 변환 → BLE 전송
-        if (delayMs > 0) {
-          await new Promise((r) => setTimeout(r, delayMs));
+        // 실제 BLE 출력 - writeText 사용 (API를 통해 점자 변환 후 전송)
+        try {
+          await writeText(word);
+          if (delayMs > 0) {
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+        } catch (error) {
+          console.error("[BraillePlayback] BLE 전송 실패:", error);
+          // 에러가 발생해도 데모 모드로 계속 진행
         }
       }
 
       onAfterPlay?.(word, idx);
     },
-    [demoMode, delayMs, setPreview, writePattern, onBeforePlay, onAfterPlay]
+    [demoMode, delayMs, setPreview, writeText, onBeforePlay, onAfterPlay]
   );
 
   // 재생 루프

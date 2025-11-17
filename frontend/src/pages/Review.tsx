@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RotateCcw, Mic, MicOff, Check, X } from "lucide-react";
 // import { api } from "@/lib/http";
@@ -9,6 +9,8 @@ import { normalizeCells } from "@/lib/brailleSafe";
 import useTTS from "../hooks/useTTS";
 import useVoiceCommands from "../hooks/useVoiceCommands";
 import AppShellMobile from "../components/ui/AppShellMobile";
+import VoiceService from "../services/VoiceService";
+import { useVoiceStore, selectIsListening, selectTranscript } from "../store/voice";
 
 // 점자 셀 표시 컴포넌트 (퀴즈와 동일)
 function Dot({ on }: { on: boolean }) {
@@ -69,9 +71,9 @@ export default function Review() {
   const [_completed, _setCompleted] = useState<number[]>([]);
   const [score, setScore] = useState({ correct: 0, total: 0 });
 
-  // STT
-  const [sttOn, setSttOn] = useState(false);
-  const recRef = useRef<any>(null);
+  // STT - VoiceService 사용 (선택자로 최적화)
+  const isListening = useVoiceStore(selectIsListening);
+  const transcript = useVoiceStore(selectTranscript);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 페이지 진입 시 자동 음성 안내
@@ -145,26 +147,13 @@ export default function Review() {
     })();
   }, []);
 
-  // STT 초기화
+  // STT 결과 처리 - VoiceService 사용
   useEffect(() => {
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
-    const r: any = new SR();
-    r.lang = "ko-KR";
-    r.continuous = false;
-    r.interimResults = false;
-    r.onresult = (e: SpeechRecognitionEvent) => {
-      const t = Array.from(e.results).map(r => r[0].transcript).join("").trim();
-      setUserAnswer(t);
-      setTimeout(() => onSubmit(t), 50);
-    };
-    r.onerror = (_e: any) => {
-      setSttOn(false);
-    };
-    r.onend = () => setSttOn(false);
-    recRef.current = r;
-    return () => { try { r.abort(); } catch {} };
-  }, []);
+    if (transcript) {
+      setUserAnswer(transcript);
+      setTimeout(() => onSubmit(transcript), 50);
+    }
+  }, [transcript]);
 
   const currentItem = items[currentIdx];
   
@@ -235,22 +224,28 @@ export default function Review() {
     }
   }, [currentItemKey]); // rawCells 제거, currentItemKey만 사용
 
-  const startSTT = () => { 
-    try { 
-      recRef.current?.start(); 
-      setSttOn(true); 
+  const startSTT = useCallback(async () => {
+    try {
+      await VoiceService.startSTT({
+        onResult: (text) => {
+          setUserAnswer(text);
+          setTimeout(() => onSubmit(text), 50);
+        },
+        onError: (error) => {
+          console.error('[Review] STT error:', error);
+          speak('음성 인식에 실패했습니다. 다시 시도해주세요.');
+        },
+        autoStop: true,
+      });
     } catch (e) {
-      console.log('[Review] STT start error:', e);
+      console.error('[Review] STT start error:', e);
+      speak('음성 인식을 시작할 수 없습니다.');
     }
-  };
-  const stopSTT = () => { 
-    try { 
-      recRef.current?.stop();  
-      setSttOn(false);
-    } catch (e) {
-      console.log('[Review] STT stop error:', e);
-    }
-  };
+  }, [speak]);
+
+  const stopSTT = useCallback(() => {
+    VoiceService.stopSTT();
+  }, []);
 
   // TTS는 useTTS 훅에서 가져옴
 
@@ -288,7 +283,7 @@ export default function Review() {
       }
     },
     stop: () => {
-      if (sttOn) stopSTT();
+      if (isListening) stopSTT();
     },
   });
 
@@ -478,12 +473,12 @@ export default function Review() {
 
             {/* 음성 입력 토글 */}
             <button
-              onClick={sttOn ? stopSTT : startSTT}
-              className={`px-4 py-3 rounded-2xl ${sttOn ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95`}
-              aria-pressed={sttOn}
+              onClick={isListening ? stopSTT : startSTT}
+              className={`px-4 py-3 rounded-2xl ${isListening ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95`}
+              aria-pressed={isListening}
               title="음성으로 정답 말하기"
             >
-              {sttOn ? <><MicOff className="inline w-4 h-4 mr-1" /> 끄기</> : <><Mic className="inline w-4 h-4 mr-1" /> 음성 입력</>}
+              {isListening ? <><MicOff className="inline w-4 h-4 mr-1" /> 끄기</> : <><Mic className="inline w-4 h-4 mr-1" /> 음성 입력</>}
             </button>
 
             <button

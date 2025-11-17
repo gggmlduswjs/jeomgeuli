@@ -59,14 +59,14 @@ function useTTS(): TTSHookReturn {
     refreshVoices();
     // 일부 브라우저는 이 이벤트 이후에 보이스가 로드됨
     const handler = () => refreshVoices();
-    window.speechSynthesis.addEventListener?.("voiceschanged", handler as any);
+    window.speechSynthesis.addEventListener?.("voiceschanged", handler);
     // iOS/Safari 억지 트리거
     if (!voicesRef.current || voicesRef.current.length === 0) {
       setTimeout(refreshVoices, 150);
       setTimeout(refreshVoices, 500);
     }
     return () => {
-      window.speechSynthesis.removeEventListener?.("voiceschanged", handler as any);
+      window.speechSynthesis.removeEventListener?.("voiceschanged", handler);
     };
   }, [isSupported, refreshVoices]);
 
@@ -176,7 +176,7 @@ function useTTS(): TTSHookReturn {
       return;
     }
     // Mic Mode에서는 기본적으로 안내 음성 차단 (옵션으로만 허용)
-    const allowDuringMic = (options as any)?.allowDuringMic === true;
+    const allowDuringMic = 'allowDuringMic' in options && options.allowDuringMic === true;
     if (micModeRef.current && !allowDuringMic) {
       return;
     }
