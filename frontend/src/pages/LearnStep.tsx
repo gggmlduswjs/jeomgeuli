@@ -269,6 +269,23 @@ export default function LearnStep() {
     onSpeech(transcript);
   }, [transcript, onSpeech]);
 
+  // 전역 음성 이벤트 수신 (next/prev/repeat)
+  useEffect(() => {
+    const onVoice = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (!detail?.type) return;
+      if (detail.type === 'next') {
+        onNext();
+      } else if (detail.type === 'prev') {
+        prev();
+      } else if (detail.type === 'repeat') {
+        repeat();
+      }
+    };
+    window.addEventListener('voice:command', onVoice as EventListener);
+    return () => window.removeEventListener('voice:command', onVoice as EventListener);
+  }, [onNext, prev, repeat]);
+
   // 제목과 진행률 표시
   const headerTitle = `${title} (${idx + 1}/${items.length})`;
 

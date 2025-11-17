@@ -1,3 +1,7 @@
+# Environment and keys (added for STT gateway)
+backend/keys/**
+*.env
+!backend/.env.example
 # Python
 __pycache__/
 *.py[cod]

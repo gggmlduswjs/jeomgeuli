@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Send, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { useTTS } from "@/hooks/useTTS";
-import { useSTT } from "@/hooks/useSTT";
 import useVoiceCommands from "@/hooks/useVoiceCommands";
 
 interface ChatLikeInputProps {
@@ -10,6 +9,7 @@ interface ChatLikeInputProps {
   placeholder?: string;
   className?: string;
   autoSubmitOnVoiceCommand?: boolean; // 음성 명령으로 자동 전송 여부
+  autoSubmitOnTranscriptDelay?: number; // 전역 transcript 누적 후 자동 전송 지연(ms), 미설정 시 비활성
 }
 
 export default function ChatLikeInput({
@@ -18,14 +18,19 @@ export default function ChatLikeInput({
   placeholder = "메시지를 입력하거나 음성으로 말하세요...",
   className = "",
   autoSubmitOnVoiceCommand = true, // 기본값: true
+  autoSubmitOnTranscriptDelay,
 }: ChatLikeInputProps) {
   const [inputText, setInputText] = useState("");
   const [isComposing, setIsComposing] = useState(false); // IME(한글) 조합 여부
   const inputRef = useRef<HTMLInputElement>(null);
   const lastTranscriptRef = useRef(""); // 중복 처리 방지
+  const lastGlobalTextRef = useRef("");
+  const lastGlobalTimeRef = useRef(0);
+  const autoSendTimerRef = useRef<number | undefined>(undefined);
 
   const { speak: _speak, stop, isSpeaking } = useTTS();
-  const { start, stop: stopSTT, isListening, transcript } = useSTT();
+  const isListening = false; // 전역 STT만 사용
+  const transcript = "";     // 전역 voice:transcript만 사용
 
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -53,38 +58,44 @@ export default function ChatLikeInput({
     },
   });
 
-  // STT 결과가 있을 때 입력창에 자동 입력
-  useEffect(() => {
-    if (transcript && transcript !== lastTranscriptRef.current) {
-      setInputText(transcript);
-      lastTranscriptRef.current = transcript;
-    }
-  }, [transcript]);
+  // 로컬 STT 미사용: 전역 voice:transcript로만 입력 누적
 
-  // 음성 명령 처리 (STT transcript를 음성 명령으로 처리)
+  // 전역 Global STT에서 오는 문장을 입력란에 누적 (탐색/자유변환 등 공통)
   useEffect(() => {
-    if (transcript && !isListening) {
-      // 음성 인식이 끝났을 때만 처리 (final transcript)
-      const normalized = transcript.toLowerCase().trim();
-      // 명령어 패턴 체크
-      if (/(전송|제출|확인|입력)/.test(normalized) && autoSubmitOnVoiceCommand) {
-        // 명령어 부분 제거하고 나머지만 전송
-        const textWithoutCommand = normalized
-          .replace(/(전송|제출|확인|입력)/g, "")
-          .trim();
-        if (textWithoutCommand) {
-          setInputText(textWithoutCommand);
-          setTimeout(() => handleSubmit(), 100);
-        } else if (inputText.trim()) {
-          // 명령어만 말한 경우 현재 입력된 텍스트 전송
-          setTimeout(() => handleSubmit(), 100);
-        }
+    const onVoiceTranscript = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { text?: string } | undefined;
+      const text = detail?.text;
+      if (!text || !text.trim()) return;
+      const trimmed = text.trim();
+      const now = Date.now();
+      // 1.5초 내 동일 문장 재유입 차단
+      if (trimmed === lastGlobalTextRef.current && now - lastGlobalTimeRef.current < 1500) {
         return;
       }
-      // 일반 명령어 처리
-      onSpeech(transcript);
-    }
-  }, [transcript, isListening, autoSubmitOnVoiceCommand, inputText, handleSubmit, onSpeech]);
+      lastGlobalTextRef.current = trimmed;
+      lastGlobalTimeRef.current = now;
+      setInputText(prev => (prev && prev.trim() ? prev + " " + trimmed : trimmed));
+    };
+    window.addEventListener('voice:transcript', onVoiceTranscript as EventListener);
+    return () => window.removeEventListener('voice:transcript', onVoiceTranscript as EventListener);
+  }, []);
+
+  // 전역 transcript 누적 후 자동 전송 (옵션)
+  useEffect(() => {
+    if (!autoSubmitOnTranscriptDelay) return;
+    if (!inputText || !inputText.trim()) return;
+    if (isListening) return;
+    window.clearTimeout(autoSendTimerRef.current);
+    autoSendTimerRef.current = window.setTimeout(() => {
+      // 입력이 남아 있고 청취 중이 아니면 자동 전송
+      if (inputText.trim() && !isListening && !disabled && !isComposing) {
+        handleSubmit();
+      }
+    }, autoSubmitOnTranscriptDelay) as unknown as number;
+    return () => window.clearTimeout(autoSendTimerRef.current);
+  }, [inputText, isListening, disabled, isComposing, autoSubmitOnTranscriptDelay, handleSubmit]);
+
+  // 로컬 transcript 기반 처리 제거 (전역 브로드캐스트에서만 처리)
 
   // 언마운트 시 TTS/STT 정리
   useEffect(() => {
@@ -116,10 +127,7 @@ export default function ChatLikeInput({
     }
   };
 
-  const handleMicClick = () => {
-    if (isListening) stopSTT();
-    else start();
-  };
+  const handleMicClick = () => {};
 
   const handleStopClick = () => {
     if (isSpeaking) stop();
@@ -180,11 +188,11 @@ export default function ChatLikeInput({
           aria-label={isListening ? "음성 입력 중지" : "음성 입력 시작"}
           aria-pressed={isListening}
         >
-          {isListening ? <MicOff className="w-5 h-5" aria-hidden="true" /> : <Mic className="w-5 h-5" aria-hidden="true" />}
+          {false ? <MicOff className="w-5 h-5" aria-hidden="true" /> : <Mic className="w-5 h-5" aria-hidden="true" />}
         </button>
 
         {/* 중지 버튼 (TTS나 STT 중일 때만 표시) */}
-        {(isSpeaking || isListening) && (
+        {(isSpeaking || false) && (
           <button
             type="button"
             onClick={handleStopClick}
@@ -219,7 +227,7 @@ export default function ChatLikeInput({
 
       {/* 상태 표시 */}
       <div className="mt-2 text-sm text-muted text-center" aria-live="polite">
-        {isListening && (
+        {false && (
           <span className="text-danger">
             🎤 음성 입력 중... “{transcript || "듣는 중..."}”
           </span>

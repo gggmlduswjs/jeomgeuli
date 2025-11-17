@@ -143,17 +143,19 @@ export default function Home() {
     stopSTT();
   };
 
-  // 원형 메뉴 버튼 컴포넌트
+  // 원형 메뉴 버튼 컴포넌트 (터치 이벤트 차단 - 음성으로만 제어)
   const RadialButton = ({ 
     label, 
     onClick, 
     Icon, 
-    color = "primary" 
+    color = "primary",
+    command
   }: { 
     label: string; 
     onClick: () => void; 
     Icon: React.ComponentType<{ className?: string }>; 
     color?: "primary" | "success" | "accent" | "sky";
+    command?: string;
   }) => {
     const colorClasses = {
       primary: "bg-primary/10 hover:bg-primary/20 text-primary border-primary/20",
@@ -163,14 +165,15 @@ export default function Home() {
     };
 
     return (
-      <button
-        onClick={onClick}
-        className={`flex flex-col items-center justify-center w-14 h-14 md:w-16 md:h-16 rounded-full border-2 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 touch-manipulation ${colorClasses[color]}`}
-        aria-label={label}
+      <div
+        className={`flex flex-col items-center justify-center w-14 h-14 md:w-16 md:h-16 rounded-full border-2 transition-all duration-300 shadow-lg pointer-events-none touch-manipulation ${colorClasses[color]}`}
+        aria-label={command ? `${label} (음성으로 "${command}"라고 말하세요)` : label}
+        role="button"
+        tabIndex={-1}
       >
         <Icon className="w-5 h-5 md:w-6 md:h-6 mb-0.5" />
         <span className="text-[10px] md:text-xs font-medium whitespace-nowrap">{label}</span>
-      </button>
+      </div>
     );
   };
 
@@ -186,8 +189,16 @@ export default function Home() {
         <div className="relative w-[320px] h-[320px] md:w-[360px] md:h-[360px] rounded-full bg-gradient-to-br from-primary/5 via-accent/5 to-sky/5 border-2 border-primary/20 shadow-2xl flex items-center justify-center backdrop-blur-sm">
           {/* 중앙 로고 버튼: 길게 눌러 음성 인식 시작 */}
           <button
-            onPointerDown={startSTT}
-            onPointerUp={stopSTT}
+            onPointerDown={(e) => {
+              // 홈 화면에서도 마이크 시작 시 안내멘트 즉시 중단 + 마이크 모드 on
+              try { stopTTS(); } catch {}
+              try { window.dispatchEvent(new CustomEvent('voice:mic-mode', { detail: { active: true } })); } catch {}
+              startSTT();
+            }}
+            onPointerUp={(e) => {
+              stopSTT();
+              try { window.dispatchEvent(new CustomEvent('voice:mic-mode', { detail: { active: false } })); } catch {}
+            }}
             className={`absolute inset-[33%] rounded-full bg-gradient-to-br from-primary via-primary/90 to-accent text-white flex items-center justify-center focus:outline-none shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 touch-manipulation ${
               isListening ? 'animate-pulse ring-4 ring-primary/50 ring-offset-2' : 'hover:ring-2 hover:ring-primary/30'
             }`}
@@ -207,19 +218,19 @@ export default function Home() {
           
           {/* 상단 버튼: 학습 */}
           <div className="absolute -top-6 md:-top-8 left-1/2 transform -translate-x-1/2 z-10">
-            <RadialButton label="학습" Icon={BookOpen} onClick={goLearn} color="primary" />
+            <RadialButton label="학습" Icon={BookOpen} onClick={goLearn} color="primary" command="학습" />
           </div>
           {/* 오른쪽 버튼: 탐색 */}
           <div className="absolute top-1/2 -right-6 md:-right-8 transform -translate-y-1/2 z-10">
-            <RadialButton label="탐색" Icon={Search} onClick={goExplore} color="success" />
+            <RadialButton label="탐색" Icon={Search} onClick={goExplore} color="success" command="탐색" />
           </div>
           {/* 하단 버튼: 복습 */}
           <div className="absolute -bottom-6 md:-bottom-8 left-1/2 transform -translate-x-1/2 z-10">
-            <RadialButton label="복습" Icon={RotateCcw} onClick={goReview} color="accent" />
+            <RadialButton label="복습" Icon={RotateCcw} onClick={goReview} color="accent" command="복습" />
           </div>
           {/* 왼쪽 버튼: 변환 */}
           <div className="absolute top-1/2 -left-6 md:-left-8 transform -translate-y-1/2 z-10">
-            <RadialButton label="변환" Icon={Type} onClick={goFree} color="sky" />
+            <RadialButton label="변환" Icon={Type} onClick={goFree} color="sky" command="자유변환" />
           </div>
         </div>
       </div>

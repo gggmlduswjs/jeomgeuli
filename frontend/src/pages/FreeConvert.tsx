@@ -54,6 +54,8 @@ export default function FreeConvert() {
   const { speak, stop: stopTTS } = useTTS();
   const { start: startSTT, stop: stopSTT, isListening, transcript } = useSTT();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastTextRef = useRef<string>('');
+  const lastTimeRef = useRef<number>(0);
   const [inputText, setInputText] = useState("");
   const [conversion, setConversion] = useState<Conversion | null>(null);
   const [isConverting, setIsConverting] = useState(false);
@@ -201,24 +203,45 @@ export default function FreeConvert() {
     },
   });
 
-  // 음성 명령 처리 (transcript 감지)
+  // 전역 Global STT에서 오는 문장을 입력란에 누적 (명령 우선 처리, 1.5s 중복 방지)
   useEffect(() => {
-    if (!transcript || !transcript.trim()) return;
-    
-    const normalized = transcript.toLowerCase().trim();
-    const isCommand = /(홈|뒤로|지워|삭제|초기화|전송|제출|확인|반복|다시|변환|홈으로|뒤로가기|이전)/.test(normalized);
-    
-    if (isCommand) {
-      // 명령어인 경우
-      onSpeech(transcript);
-    } else if (!isListening) {
-      // 명령어가 아니고 음성 입력이 끝난 경우 텍스트 추가
-      setInputText(prev => {
-        const newText = prev.trim() ? prev + ' ' + transcript : transcript;
-        return newText;
-      });
-    }
-  }, [transcript, isListening, onSpeech]);
+    const onVoiceTranscript = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { text?: string } | undefined;
+      const text = detail?.text?.trim();
+      if (!text) return;
+
+      // 1) 명령 우선 처리
+      const handled = onSpeech(text);
+      if (handled) return;
+
+      // 2) 1.5초 내 동일 문장 차단
+      const now = Date.now();
+      if (text === lastTextRef.current && now - lastTimeRef.current < 1500) return;
+      lastTextRef.current = text;
+      lastTimeRef.current = now;
+
+      // 3) 입력 누적
+      setInputText(prev => (prev && prev.trim() ? prev + ' ' + text : text));
+    };
+    window.addEventListener('voice:transcript', onVoiceTranscript as EventListener);
+    return () => window.removeEventListener('voice:transcript', onVoiceTranscript as EventListener);
+  }, [onSpeech]);
+
+  // 자동 변환 디바운스 타이머
+  const autoTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!inputText || !inputText.trim()) return;
+    window.clearTimeout(autoTimer.current);
+    autoTimer.current = window.setTimeout(() => {
+      setError(null);
+      // 에코 방지: 듣는 중이면 잠시 중단
+      if (isListening) {
+        try { stopSTT(); } catch {}
+      }
+      handleConvert();
+    }, 600);
+    return () => window.clearTimeout(autoTimer.current);
+  }, [inputText, isListening, stopSTT]);
 
   return (
     <AppShellMobile title="자유 변환" showBackButton onBack={handleBack}>
@@ -240,24 +263,7 @@ export default function FreeConvert() {
               rows={3}
               placeholder="한글 텍스트를 입력하거나 음성으로 말하세요"
             />
-            <div className="mt-2 flex items-center justify-between">
-              <div className="text-xs text-muted">
-                💡 음성 입력: 마이크 버튼을 눌러 음성으로 텍스트를 입력하세요
-              </div>
-              <button
-                type="button"
-                onPointerDown={startSTT}
-                onPointerUp={stopSTT}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                  isListening
-                    ? 'bg-primary text-white animate-pulse'
-                    : 'bg-card text-fg border border-border hover:bg-border'
-                }`}
-                aria-label="음성 입력"
-              >
-                {isListening ? '🎤 음성 입력 중...' : '🎤 음성 입력'}
-              </button>
-            </div>
+            {/* 전역 롱프레스/탭으로 STT 제어 (마이크 버튼 제거) */}
           </div>
 
           <button onClick={handleConvert} disabled={isConverting || !inputText.trim()} className="btn-primary w-full">

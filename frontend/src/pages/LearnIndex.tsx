@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import AppShellMobile from "../components/ui/AppShellMobile";
 import SpeechBar from "../components/input/SpeechBar";
 import useTTS from "../hooks/useTTS";
@@ -41,38 +41,76 @@ export default function LearnIndex() {
       // 이미 학습 메뉴에 있음
       speak("이미 점자 학습 메뉴입니다.");
     },
-    // 각 항목 선택
+    // 각 항목 선택 (더 유연한 매칭)
     speak: (text: string) => {
-      const normalized = text.toLowerCase().trim();
-      // 자모 학습
-      if (/(자모|자음|모음)/.test(normalized)) {
+      let normalized = text.toLowerCase().trim();
+      
+      // 오인식 패턴 보정
+      const misrecognitionMap: Record<string, string> = {
+        "자무": "자모",
+        "자모.": "자모",
+        "참호": "자모",
+        "단어.": "단어",
+        "다워": "단어",
+        "문장.": "문장",
+      };
+      
+      for (const [wrong, correct] of Object.entries(misrecognitionMap)) {
+        if (normalized.includes(wrong)) {
+          normalized = normalized.replace(wrong, correct);
+        }
+      }
+      
+      // 자모 학습 (매우 관대한 매칭)
+      if (/(자모|자음|모음|자무|참호)/.test(normalized) || 
+          normalized.startsWith('자') || 
+          normalized.includes('자모') || 
+          normalized.includes('자음') || 
+          normalized.includes('모음') ||
+          (normalized.length <= 3 && normalized[0] === '자')) {
         stopTTS();
         navigate('/learn/char');
         stopSTT();
+        return;
       }
-      // 단어 학습
-      else if (/(단어|워드)/.test(normalized)) {
+      // 단어 학습 (매우 관대한 매칭)
+      if (/(단어|워드|다워)/.test(normalized) || 
+          normalized.startsWith('단') || 
+          normalized.includes('단어') ||
+          (normalized.length <= 3 && normalized[0] === '단')) {
         stopTTS();
         navigate('/learn/word');
         stopSTT();
+        return;
       }
-      // 문장 학습
-      else if (/(문장|센턴스)/.test(normalized)) {
+      // 문장 학습 (매우 관대한 매칭)
+      if (/(문장|센턴스)/.test(normalized) || 
+          normalized.startsWith('문') || 
+          normalized.includes('문장') ||
+          (normalized.length <= 3 && normalized[0] === '문')) {
         stopTTS();
         navigate('/learn/sentence');
         stopSTT();
+        return;
       }
-      // 자유 변환
-      else if (/(자유\s*변환|자유변환|변환)/.test(normalized)) {
+      // 자유 변환 (매우 관대한 매칭)
+      if (/(자유\s*변환|자유변환|변환)/.test(normalized) || 
+          normalized.includes('변환') || 
+          normalized.includes('자유')) {
         stopTTS();
         navigate('/learn/free');
         stopSTT();
+        return;
       }
-      // 복습하기
-      else if (/(복습|리뷰|다시\s*보기)/.test(normalized)) {
+      // 복습하기 (매우 관대한 매칭)
+      if (/(복습|리뷰|다시\s*보기)/.test(normalized) || 
+          normalized.startsWith('복') || 
+          normalized.includes('복습') || 
+          normalized.includes('리뷰')) {
         stopTTS();
         navigate('/review');
         stopSTT();
+        return;
       }
     },
   });
@@ -97,21 +135,22 @@ export default function LearnIndex() {
         >
           <h2 className="text-xl font-bold mb-4">점자 학습</h2>
 
-        {items.map(({ to, label, desc, highlight }) => (
-          <Link
+        {items.map(({ to, label, desc, highlight, command }) => (
+          <div
             key={to}
-            to={to}
             className={[
               "block rounded-2xl bg-white px-5 py-4 border shadow transition-colors",
-              "focus:outline-none focus:ring-4 focus:ring-primary/30",
               highlight ? "border-sky-200 text-sky-700" : "border-border text-fg",
-              "hover:bg-card/80",
+              "pointer-events-none", // 터치 이벤트 차단
             ].join(" ")}
-            aria-label={`${label} - ${desc}`}
+            aria-label={`${label} - ${desc} (음성으로 "${command}"라고 말하세요)`}
+            role="button"
+            tabIndex={-1}
           >
             <div className="font-semibold">{label}</div>
             <div className="text-sm text-secondary mt-0.5">{desc}</div>
-          </Link>
+            <div className="text-xs text-muted mt-2">💬 "{command}"라고 말하세요</div>
+          </div>
         ))}
         </nav>
       </div>

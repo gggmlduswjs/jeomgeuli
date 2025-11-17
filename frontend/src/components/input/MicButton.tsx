@@ -40,13 +40,18 @@ export default function MicButton({ onResult, className = "", label = "음성 �
 
   const start = () => {
     if (!isSupported) {
+      console.warn('[MicButton] 브라우저가 음성 인식을 지원하지 않습니다.');
       setError("이 브라우저는 음성 인식을 지원하지 않습니다.");
       onResult?.("");
       return;
     }
-    if (listening) return; // 중복 호출 방지
+    if (listening) {
+      console.log('[MicButton] 이미 음성 인식이 진행 중입니다.');
+      return; // 중복 호출 방지
+    }
 
     try {
+      console.log('[MicButton] 음성 인식 시작 시도...');
       const recognition = new Recognition!();
       recognition.lang = "ko-KR";
       recognition.interimResults = false;
@@ -54,6 +59,7 @@ export default function MicButton({ onResult, className = "", label = "음성 �
       recognition.continuous = false;
 
       recognition.onstart = () => {
+        console.log('[MicButton] 음성 인식 시작됨');
         setError(null);
         setListening(true);
         setTranscript("");
@@ -61,6 +67,8 @@ export default function MicButton({ onResult, className = "", label = "음성 �
 
       recognition.onresult = (event: any) => {
         const text = event?.results?.[0]?.[0]?.transcript ?? "";
+        const confidence = event?.results?.[0]?.[0]?.confidence ?? 0;
+        console.log(`[MicButton] 인식 결과: "${text}" (신뢰도: ${(confidence * 100).toFixed(1)}%)`);
         setTranscript(text);
         onResult?.(text);
       };
@@ -68,10 +76,12 @@ export default function MicButton({ onResult, className = "", label = "음성 �
       recognition.onerror = (event: any) => {
         const code = event?.error ?? "unknown";
         // 참고: 'no-speech', 'audio-capture', 'not-allowed', 'aborted', 'network' 등
+        console.error(`[MicButton] 오류 발생: ${code}`);
         setError(String(code));
       };
 
       recognition.onend = () => {
+        console.log('[MicButton] 음성 인식 종료됨');
         setListening(false);
         // 인스턴스 정리
         recRef.current = null;
@@ -88,6 +98,7 @@ export default function MicButton({ onResult, className = "", label = "음성 �
   };
 
   const stop = () => {
+    console.log('[MicButton] 음성 인식 중지 요청');
     const rec = recRef.current;
     try {
       if (rec) {
@@ -95,6 +106,8 @@ export default function MicButton({ onResult, className = "", label = "음성 �
         if (typeof rec.abort === "function") rec.abort();
         else rec.stop();
       }
+    } catch (e) {
+      console.warn('[MicButton] 중지 중 오류:', e);
     } finally {
       setListening(false);
       recRef.current = null;
@@ -102,8 +115,13 @@ export default function MicButton({ onResult, className = "", label = "음성 �
   };
 
   const handleClick = () => {
-    if (listening) stop();
-    else start();
+    if (listening) {
+      console.log('[MicButton] 마이크 버튼 클릭: 중지');
+      stop();
+    } else {
+      console.log('[MicButton] 마이크 버튼 클릭: 시작');
+      start();
+    }
   };
 
   // 언마운트/리렌더 정리

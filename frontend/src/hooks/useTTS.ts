@@ -39,6 +39,7 @@ function useTTS(): TTSHookReturn {
   const utteranceQueue = useRef<string[]>([]);
   const isProcessing = useRef(false);
   const unmountedRef = useRef(false);
+  const micModeRef = useRef<boolean>(false);
 
   // 최신 보이스 목록 캐시
   const voicesRef = useRef<SpeechSynthesisVoice[] | null>(null);
@@ -78,6 +79,20 @@ function useTTS(): TTSHookReturn {
     setIsSpeaking(false);
     setIsPaused(false);
   }, []);
+
+  // Mic Mode 수신: 활성화 시 즉시 모든 음성 중지, 비활성화 시만 TTS 허용
+  useEffect(() => {
+    const onMicMode = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { active?: boolean } | undefined;
+      const active = !!detail?.active;
+      micModeRef.current = active;
+      if (active) {
+        hardReset();
+      }
+    };
+    window.addEventListener('voice:mic-mode', onMicMode as EventListener);
+    return () => window.removeEventListener('voice:mic-mode', onMicMode as EventListener);
+  }, [hardReset]);
 
   const processQueue = useCallback((opts: TTSOptions) => {
     if (!isSupported || unmountedRef.current) return;
@@ -158,6 +173,11 @@ function useTTS(): TTSHookReturn {
     if (!isSupported) {
       console.warn("Speech synthesis is not supported in this browser");
       setError("Speech synthesis is not supported");
+      return;
+    }
+    // Mic Mode에서는 기본적으로 안내 음성 차단 (옵션으로만 허용)
+    const allowDuringMic = (options as any)?.allowDuringMic === true;
+    if (micModeRef.current && !allowDuringMic) {
       return;
     }
     
