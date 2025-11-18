@@ -19,24 +19,16 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
   
   const [showAnimation, setShowAnimation] = useState(false);
   const [isLongPressing, setIsLongPressing] = useState(false);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
-  const hasStartedRef = useRef(false);
+  const [recognizedCommand, setRecognizedCommand] = useState<string | null>(null); // 인식된 명령어 표시용
+  const activePointerRef = useRef<{ pointerId: number; startTime: number } | null>(null);
   const lastTranscriptRef = useRef<string>('');
   const lastBroadcastRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
   const transcriptProcessedRef = useRef(false);
   const pausedMediaRef = useRef<HTMLMediaElement[]>([]);
-  const lastPointerRef = useRef<number>(0);
   const sttLockRef = useRef<boolean>(false);
   const coolUntilRef = useRef<number>(0);
-
-  // 롱프레스 시간 (500ms)
-  const LONG_PRESS_DURATION = 500;
-  const TAP_TOGGLE_THRESHOLD = 300; // 300ms 이내 짧은 탭이면 토글
-  const isVoiceActivePath = useCallback(() => {
-    const p = location.pathname || '';
-    return p.startsWith('/explore') || p.startsWith('/free-convert') || p.startsWith('/learn');
-  }, [location.pathname]);
+  const transcriptDebounceTimerRef = useRef<NodeJS.Timeout | null>(null); // 2초 debounce 타이머
+  const commandExecutedRef = useRef<number>(0); // 명령어 실행 시간 추적
 
   // 모든 오디오/비디오 일시정지(겹침 방지)
   const stopAllMedia = useCallback(() => {
@@ -71,13 +63,6 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     } catch {}
   }, []);
 
-  // 포인터 스로틀
-  const throttlePointer = useCallback((ms: number = 300) => {
-    const now = Date.now();
-    if (now - lastPointerRef.current < ms) return false;
-    lastPointerRef.current = now;
-    return true;
-  }, []);
 
   // STT 안전 시작/중지 (MicMode intents에 맞춰 수행)
   const safeStart = useCallback(() => {
@@ -89,6 +74,10 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       stopTTS();
       stopAllMedia();
       playBeep();
+      
+      // 마이크 시작 시 이전 transcript 초기화 (이전 데이터가 보이지 않도록)
+      useVoiceStore.getState().resetTranscript();
+      
       try { window.dispatchEvent(new CustomEvent('voice:mic-mode', { detail: { active: true } })); } catch {}
       startSTT();
     } finally {
@@ -182,18 +171,20 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
   const { onSpeech } = useVoiceCommands({
     home: () => {
       if (location.pathname !== '/') {
+        stopSTT();
         navigate('/');
         speak('홈으로 이동합니다.');
       }
     },
     back: () => {
+      stopSTT();
       navigate(-1);
       speak('뒤로 갑니다.');
     },
     learn: () => {
+      stopSTT();
       navigate('/learn');
       speak('점자 학습 모드로 이동합니다.');
-      stopSTT();
     },
     explore: () => {
       navigate('/explore');
@@ -206,8 +197,13 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       stopSTT();
     },
     // 전역 재생 제어 명령은 이벤트로 브로드캐스트하여 화면 단에서 처리
+    // 학습 모드(/learn/char, /learn/word, /learn/sentence)에서는 이벤트를 보내되
+    // LearnStep의 onSpeech에도 도달하도록 false를 반환하지 않음 (이벤트만으로 처리)
     next: () => {
       window.dispatchEvent(new CustomEvent('voice:command', { detail: { type: 'next' } }));
+      // 학습 모드에서는 이벤트만으로 처리되므로 true 반환 (LearnStep의 이벤트 리스너가 처리)
+      // 다른 페이지에서는 false를 반환하여 페이지별 onSpeech에도 도달하도록 할 수 있지만,
+      // 현재는 이벤트만으로 처리하는 것이 더 안정적
     },
     prev: () => {
       window.dispatchEvent(new CustomEvent('voice:command', { detail: { type: 'prev' } }));
@@ -255,85 +251,155 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     },
   });
 
-  // 음성 명령 처리 (중복 방지 완화 + 여러 대안 활용)
+  // 최종 인식 결과만 처리 (TRANSCRIPT 이벤트를 통해)
   useEffect(() => {
-    if (!transcript) {
-      transcriptProcessedRef.current = false;
+    // 퀴즈 모드에서는 GlobalVoiceRecognition이 transcript를 처리하지 않음 (퀴즈 모드가 자체적으로 처리)
+    if (location.pathname.startsWith('/quiz')) {
       return;
     }
     
-    // 중복 처리 방지 완화: 같은 텍스트가 1초 이내에 연속으로 오면 무시 (더 짧은 시간)
-    const now = Date.now();
-    const { lastTranscriptTime, lastTranscriptText } = useVoiceStore.getState();
-    if (transcript === lastTranscriptText && transcriptProcessedRef.current && (now - lastTranscriptTime < 1000)) {
-      console.log('[GlobalVoice] 중복 인식 무시:', transcript);
-      return;
-    }
-    
-    // 새로운 텍스트인 경우에만 처리
-    if (transcript !== lastTranscriptRef.current) {
-      lastTranscriptRef.current = transcript;
-      transcriptProcessedRef.current = true;
-      console.log('[GlobalVoice] 인식된 텍스트:', transcript);
+    const handleFinalTranscript = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { text?: string };
+      const finalText = detail?.text;
+      if (!finalText) return;
       
+      console.log('[GlobalVoice] 최종 인식 결과 수신:', finalText);
+      
+      // 중복 처리 방지
+      const now = Date.now();
+      if (finalText === lastBroadcastRef.current.text && now - lastBroadcastRef.current.time < 500) {
+        console.log('[GlobalVoice] 최종 결과 중복 무시:', finalText);
+        return;
+      }
+      
+      // Store에서 최신 alternatives 가져오기
+      const currentAlternatives = useVoiceStore.getState().alternatives;
+      
+      // 먼저 명령어 매칭 시도 (즉시 처리)
       let commandMatched = false;
       
       // 여러 대안이 있으면 모두 시도 (confidence 순서대로)
-      if (alternatives && alternatives.length > 0) {
-        console.log(`[GlobalVoice] ${alternatives.length}개의 대안 처리 중...`);
-        // 각 대안을 순서대로 시도 (이미 confidence 순으로 정렬됨)
-        for (const alt of alternatives) {
+      if (currentAlternatives && currentAlternatives.length > 0) {
+        for (const alt of currentAlternatives) {
           const matched = onSpeech(alt.transcript);
           if (matched) {
-            console.log(`[GlobalVoice] 대안 "${alt.transcript}"에서 명령 매칭 성공`);
-            // 명령 성공 시에는 transcript 브로드캐스트를 하지 않음
+            console.log(`[GlobalVoice] 대안 "${alt.transcript}"에서 명령 매칭 성공 - 즉시 처리`);
             commandMatched = true;
-            break; // 명령이 매칭되면 중단
-          }
-        }
-      }
-      
-      // 대안에서 매칭되지 않았거나 대안이 없으면 기본 텍스트 처리
-      if (!commandMatched) {
-        const matched = onSpeech(transcript);
-        if (matched) {
-          commandMatched = true;
-        } else {
-          // onSpeech가 false를 반환한 경우 (학습 메뉴 항목 등)
-          // 학습 메뉴 항목 선택 처리 시도
-          if (handleLearnMenuSelection(transcript)) {
-            commandMatched = true;
-          } else {
-            // 학습 메뉴 항목이 아니면 기본 TTS 처리
-            stopTTS();
-            speak(transcript);
-          }
-        }
-        if (!commandMatched) {
-          onTranscript?.(transcript);
-          // 전역 이벤트로 최종 인식 텍스트 브로드캐스트 (정규화 + 중복 억제)
-          try {
-            const text = String(transcript || '').replace(/\s+/g, ' ').trim();
-            const now = Date.now();
-            if (text && !(lastBroadcastRef.current.text === text && now - lastBroadcastRef.current.time < 1500)) {
-              lastBroadcastRef.current = { text, time: now };
-              window.dispatchEvent(new CustomEvent('voice:transcript', { detail: { text } }));
+            lastBroadcastRef.current = { text: finalText, time: now };
+            commandExecutedRef.current = now; // 명령어 실행 시간 기록
+            
+            // 인식된 명령어 표시
+            setRecognizedCommand(`✓ 인식: ${alt.transcript}`);
+            setTimeout(() => setRecognizedCommand(null), 2000); // 2초 후 사라짐
+            
+            // 명령 매칭 시 즉시 마이크 끄기
+            if (isListening) {
+              console.log('[GlobalVoice] 명령 매칭 - 마이크 자동 종료');
+              micMode.requestStop();
             }
-          } catch {}
+            // 포인터 상태 리셋
+            activePointerRef.current = null;
+            setIsLongPressing(false);
+            // 기존 타이머 취소 (명령어는 즉시 처리)
+            if (transcriptDebounceTimerRef.current) {
+              clearTimeout(transcriptDebounceTimerRef.current);
+              transcriptDebounceTimerRef.current = null;
+            }
+            return; // 명령어는 즉시 처리하고 종료
+          }
         }
       }
       
-      // 일정 시간 후 플래그 리셋 (같은 텍스트를 다시 말할 수 있도록)
-      setTimeout(() => {
-        transcriptProcessedRef.current = false;
-        lastTranscriptRef.current = ''; // 리셋하여 같은 명령을 다시 말할 수 있게
-      }, 1000); // 2초에서 1초로 단축
-    }
-  }, [transcript, alternatives, onSpeech, onTranscript]);
+      // 기본 텍스트로도 명령어 시도
+      const matched = onSpeech(finalText);
+      if (matched) {
+        console.log(`[GlobalVoice] "${finalText}"에서 명령 매칭 성공 - 즉시 처리`);
+        commandMatched = true;
+        lastBroadcastRef.current = { text: finalText, time: now };
+        commandExecutedRef.current = now; // 명령어 실행 시간 기록
+        
+        // 인식된 명령어 표시
+        setRecognizedCommand(`✓ 인식: ${finalText}`);
+        setTimeout(() => setRecognizedCommand(null), 2000); // 2초 후 사라짐
+        
+        // 명령 매칭 시 즉시 마이크 끄기
+        if (isListening) {
+          console.log('[GlobalVoice] 명령 매칭 - 마이크 자동 종료');
+          micMode.requestStop();
+        }
+        // 포인터 상태 리셋
+        activePointerRef.current = null;
+        setIsLongPressing(false);
+        // 기존 타이머 취소
+        if (transcriptDebounceTimerRef.current) {
+          clearTimeout(transcriptDebounceTimerRef.current);
+          transcriptDebounceTimerRef.current = null;
+        }
+        return; // 명령어는 즉시 처리하고 종료
+      }
+      
+      // 학습 메뉴 항목 선택 처리 시도
+      if (handleLearnMenuSelection(finalText)) {
+        console.log(`[GlobalVoice] "${finalText}"에서 메뉴 선택 성공 - 즉시 처리`);
+        lastBroadcastRef.current = { text: finalText, time: now };
+        commandExecutedRef.current = now; // 명령어 실행 시간 기록
+        
+        // 인식된 명령어 표시
+        setRecognizedCommand(`✓ 인식: ${finalText}`);
+        setTimeout(() => setRecognizedCommand(null), 2000); // 2초 후 사라짐
+        
+        // 메뉴 선택 시 즉시 마이크 끄기
+        if (isListening) {
+          console.log('[GlobalVoice] 메뉴 선택 - 마이크 자동 종료');
+          micMode.requestStop();
+        }
+        // 포인터 상태 리셋
+        activePointerRef.current = null;
+        setIsLongPressing(false);
+        // 기존 타이머 취소
+        if (transcriptDebounceTimerRef.current) {
+          clearTimeout(transcriptDebounceTimerRef.current);
+          transcriptDebounceTimerRef.current = null;
+        }
+        return; // 메뉴 선택도 즉시 처리
+      }
+      
+      // 명령어가 아닌 경우에만 debounce 적용 (0.5초)
+      // 기존 타이머 취소
+      if (transcriptDebounceTimerRef.current) {
+        clearTimeout(transcriptDebounceTimerRef.current);
+        transcriptDebounceTimerRef.current = null;
+      }
+      
+      // 0.5초 후 처리 (일반 텍스트는 짧은 debounce)
+      transcriptDebounceTimerRef.current = setTimeout(() => {
+        console.log('[GlobalVoice] 일반 텍스트 처리:', finalText);
+        lastBroadcastRef.current = { text: finalText, time: Date.now() };
+        
+        // 기본 TTS 처리
+        stopTTS();
+        speak(finalText);
+        onTranscript?.(finalText);
+        
+        transcriptDebounceTimerRef.current = null;
+      }, 500); // 일반 텍스트는 0.5초 debounce
+    };
+    
+    // TRANSCRIPT 이벤트는 최종 결과에만 발생 (emitTranscript 호출 시)
+    window.addEventListener('voice:transcript', handleFinalTranscript as EventListener);
+    return () => {
+      window.removeEventListener('voice:transcript', handleFinalTranscript as EventListener);
+      // cleanup: 타이머 정리
+      if (transcriptDebounceTimerRef.current) {
+        clearTimeout(transcriptDebounceTimerRef.current);
+        transcriptDebounceTimerRef.current = null;
+      }
+    };
+  }, [onSpeech, onTranscript, handleLearnMenuSelection, stopTTS, speak, isListening, location.pathname]);
 
-  // 롱프레스 시작
+  // 포인터 시작 - 화면을 누르고 있는 동안 마이크 켜기
   const handlePointerDown = useCallback((e: PointerEvent) => {
-    // 버튼이나 입력 필드에서는 작동하지 않도록
+    // 버튼/입력 필드 필터링
     const target = e.target as HTMLElement;
     if (
       target.tagName === 'BUTTON' ||
@@ -347,65 +413,55 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       return;
     }
 
-    pressStartRef.current = { x: e.clientX, y: e.clientY, ...( { time: Date.now() } as any) };
-    hasStartedRef.current = false;
-
-    longPressTimerRef.current = setTimeout(() => {
-      setIsLongPressing(true);
-      setShowAnimation(true);
-      hasStartedRef.current = true;
-      console.log('[GlobalVoice] 롱프레스 감지 - 음성 인식 시작');
-      // Restrict long-press start to Explore/FreeConvert pages
-      if (isVoiceActivePath()) {
-        if (throttlePointer(350)) {
-          micMode.requestStart();
-        }
-      } else {
-        // 비활성 페이지에서는 무시
-        setIsLongPressing(false);
-        setShowAnimation(false);
-        hasStartedRef.current = false;
-      }
-    }, LONG_PRESS_DURATION);
-  }, [safeStart, isVoiceActivePath, throttlePointer]);
-
-  // 롱프레스 종료
-  const handlePointerUp = useCallback((e: PointerEvent) => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
+    // 이미 활성 포인터가 있으면 무시
+    if (activePointerRef.current) {
+      return;
     }
 
-    // 롱프레스가 시작되었고 음성 인식이 진행 중이면 중지
-    if (hasStartedRef.current && isListening) {
-      console.log('[GlobalVoice] 롱프레스 종료 - 음성 인식 중지');
+    // 이미 마이크가 켜져 있으면 무시
+    if (isListening) {
+      return;
+    }
+
+    // 활성 포인터 등록
+    activePointerRef.current = {
+      pointerId: e.pointerId,
+      startTime: Date.now()
+    };
+
+    // 마이크 시작
+    setIsLongPressing(true);
+    setShowAnimation(true);
+    stopTTS(); // TTS 중지 (홈 화면 등에서 안내 멘트 중단)
+    micMode.requestStart();
+  }, [isListening, stopTTS]);
+
+  // 포인터 종료 - 손을 떼면 마이크 끄기
+  const handlePointerUp = useCallback((e: PointerEvent) => {
+    // 활성 포인터가 없으면 무시
+    if (!activePointerRef.current) {
+      return;
+    }
+
+    // 같은 포인터의 이벤트만 처리
+    if (activePointerRef.current.pointerId !== e.pointerId) {
+      return;
+    }
+
+    // 마이크 중지
+    if (isListening) {
       micMode.requestStop();
     }
 
-    // 짧은 탭: 마이크 토글
-    if (pressStartRef.current) {
-      const startTime = (pressStartRef.current as any).time ?? 0;
-      const dt = Date.now() - startTime;
-      if (dt < TAP_TOGGLE_THRESHOLD) {
-        // Restrict tap-start to Explore/FreeConvert pages
-        if (!isListening && isVoiceActivePath()) {
-          console.log('[GlobalVoice] 탭 - STT 시작');
-          if (throttlePointer(300)) micMode.requestStart();
-        } else if (isListening && isVoiceActivePath()) {
-          console.log('[GlobalVoice] 탭 - STT 중지');
-          if (throttlePointer(300)) micMode.requestStop();
-        }
-      }
-    }
-
-    // 애니메이션 숨기기 (약간의 딜레이로 부드럽게)
+    // 상태 리셋
+    activePointerRef.current = null;
+    setIsLongPressing(false);
     setTimeout(() => {
-      setIsLongPressing(false);
       if (!isListening) {
         setShowAnimation(false);
       }
     }, 200);
-  }, [isListening, safeStop, throttlePointer, isVoiceActivePath, safeStart]);
+  }, [isListening]);
 
   // MicMode intents → 실제 STT start/stop 수행
   useEffect(() => {
@@ -418,51 +474,83 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     };
   }, [safeStart, safeStop]);
 
-  // 포인터 이동 시 롱프레스 취소
-  const handlePointerMove = useCallback((e: PointerEvent) => {
-    if (!pressStartRef.current) return;
-
-    const dx = Math.abs(e.clientX - pressStartRef.current.x);
-    const dy = Math.abs(e.clientY - pressStartRef.current.y);
-    const threshold = 10; // 10px 이상 이동하면 취소
-
-    if (dx > threshold || dy > threshold) {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-      pressStartRef.current = null;
+  // 마우스를 누르고 있는 동안 음성 인식이 자동 중단되면 재시작
+  useEffect(() => {
+    // 퀴즈 모드에서는 자동 재시작 비활성화 (퀴즈 모드는 자체적으로 STT 관리)
+    if (location.pathname.startsWith('/quiz')) {
+      return;
     }
+    
+    // 마우스를 누르고 있는데 음성 인식이 꺼진 경우 자동 재시작
+    if (isLongPressing && !isListening && activePointerRef.current) {
+      // 최근에 명령어가 실행되었는지 확인
+      const timeSinceLastCommand = Date.now() - commandExecutedRef.current;
+      // 명령어 실행 후 2초 이내면 재시작하지 않음 (명령어 실행 후 자동 종료된 경우)
+      if (timeSinceLastCommand < 2000) {
+        console.log('[GlobalVoice] 최근 명령어 실행으로 인한 자동 종료 - 재시작하지 않음');
+        return;
+      }
+      
+      // 이미 진행 중인지 확인 (VoiceService의 내부 상태 확인 불가하므로 짧은 딜레이 후 재시작)
+      const timer = setTimeout(() => {
+        // 재시작 전에 다시 확인 (다른 곳에서 이미 시작했을 수 있음)
+        const currentListening = useVoiceStore.getState().isListening;
+        // 다시 한 번 명령어 실행 시간 확인
+        const timeSinceLastCommand2 = Date.now() - commandExecutedRef.current;
+        if (isLongPressing && !currentListening && activePointerRef.current && timeSinceLastCommand2 >= 2000) {
+          console.log('[GlobalVoice] 음성 인식이 자동 중단됨 - 재시작');
+          micMode.requestStart();
+        }
+      }, 800); // 충분한 딜레이
+      return () => clearTimeout(timer);
+    }
+  }, [isListening, isLongPressing, location.pathname]);
+
+  // 포인터 이동 - 아무것도 하지 않음
+  const handlePointerMove = useCallback(() => {
+    // 마이크는 유지, 아무것도 하지 않음
   }, []);
+
+  // 포인터 취소 - 활성 포인터가 있으면 리셋
+  const handlePointerCancel = useCallback((e: PointerEvent) => {
+    if (activePointerRef.current && activePointerRef.current.pointerId === e.pointerId) {
+      if (isListening) {
+        micMode.requestStop();
+      }
+      activePointerRef.current = null;
+      setIsLongPressing(false);
+      setShowAnimation(false);
+    }
+  }, [isListening]);
 
   // 전역 이벤트 리스너 등록
   useEffect(() => {
-    window.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointercancel', handlePointerUp);
+    window.addEventListener('pointerdown', handlePointerDown, { capture: false });
+    window.addEventListener('pointerup', handlePointerUp, { capture: false });
+    window.addEventListener('pointermove', handlePointerMove, { capture: false });
+    window.addEventListener('pointercancel', handlePointerCancel, { capture: false });
 
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointercancel', handlePointerUp);
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
+      window.removeEventListener('pointercancel', handlePointerCancel);
     };
-  }, [handlePointerDown, handlePointerUp, handlePointerMove]);
+  }, [handlePointerDown, handlePointerUp, handlePointerMove, handlePointerCancel]);
 
   // 음성 인식 종료 시 애니메이션 숨기기
   useEffect(() => {
-    if (!isListening && showAnimation) {
+    // 화면을 누르고 있는 동안(isLongPressing)에는 UI를 숨기지 않음
+    if (!isListening && showAnimation && !isLongPressing) {
       const timer = setTimeout(() => {
-        setShowAnimation(false);
-        setIsLongPressing(false);
+        // 다시 확인 (상태가 변경되었을 수 있음)
+        if (!isListening && !isLongPressing) {
+          setShowAnimation(false);
+        }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [isListening, showAnimation]);
+  }, [isListening, showAnimation, isLongPressing]);
 
   if (!showAnimation && !isListening) {
     return null;
@@ -537,11 +625,22 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
         {/* 상태 텍스트 */}
         <div className="mt-8 text-center">
           <p className="text-white text-lg font-semibold drop-shadow-lg">
-            {isListening ? '🎤 말씀해 주세요...' : isLongPressing ? '음성 인식 준비 중...' : ''}
+            {transcript?.trim() 
+              ? transcript.trim() 
+              : (isLongPressing || isListening) 
+                ? '음성 인식 준비 중...' 
+                : ''}
           </p>
-          {transcript && (
-            <p className="mt-2 text-white/90 text-sm drop-shadow-md max-w-xs px-4">
-              {transcript}
+          {/* 인식 중일 때 하단에 상태 표시 */}
+          {transcript?.trim() && (
+            <p className="text-white/70 text-xs mt-1 drop-shadow-md">
+              음성 인식 중...
+            </p>
+          )}
+          {/* 명령어 인식 성공 시 표시 */}
+          {recognizedCommand && (
+            <p className="text-green-300 text-sm mt-2 font-bold drop-shadow-md animate-pulse">
+              {recognizedCommand}
             </p>
           )}
         </div>

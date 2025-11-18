@@ -12,6 +12,7 @@ import ErrorBoundary from "../components/system/ErrorBoundary";
 import HealthCheck from "../components/system/HealthCheck";
 import GlobalVoiceRecognition from "../components/input/GlobalVoiceRecognition";
 import PerformanceMonitor from "../components/system/PerformanceMonitor";
+import VoiceRecognitionDebug from "../components/debug/VoiceRecognitionDebug";
 import { useEffect, useRef } from "react";
 
 export default function App(){
@@ -61,6 +62,7 @@ export default function App(){
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           {import.meta.env.DEV && <DevHealth />}
           {import.meta.env.DEV && <PerformanceMonitor />}
+          {import.meta.env.DEV && <VoiceRecognitionDebug />}
           {/* 전역 음성 인식: 모든 페이지에서 화면을 길게 누르면 음성 인식 시작 */}
           <GlobalVoiceRecognition />
           <Routes>

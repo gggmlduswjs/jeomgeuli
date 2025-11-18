@@ -147,13 +147,66 @@ export default function Review() {
     })();
   }, []);
 
-  // STT 결과 처리 - VoiceService 사용
+  // 음성 명령 처리
+  const { onSpeech } = useVoiceCommands({
+    home: () => {
+      VoiceService.stopSTT();
+      navigate('/');
+    },
+    back: () => {
+      VoiceService.stopSTT();
+      navigate('/');
+    },
+    submit: () => {
+      if (userAnswer.trim()) {
+        onSubmit();
+      } else {
+        speak("정답을 말하거나 입력해주세요.");
+      }
+    },
+    clear: () => {
+      setUserAnswer("");
+      inputRef.current?.focus();
+    },
+    next: () => {
+      if (currentIdx + 1 < items.length) {
+        setCurrentIdx(prev => prev + 1);
+        setUserAnswer("");
+        inputRef.current?.focus();
+      } else {
+        speak("마지막 문제입니다.");
+      }
+    },
+    repeat: () => {
+      if (currentItem) {
+        const p = currentItem.payload ?? currentItem;
+        const text = p.content?.trim() || p.text?.trim() || p.word?.trim() || "";
+        if (text) {
+          speak(`문제: ${text}`);
+        }
+      }
+    },
+    stop: () => {
+      if (isListening) stopSTT();
+    },
+  });
+
+  // STT 결과 처리 - 명령 우선, 아니면 정답으로 처리
   useEffect(() => {
-    if (transcript) {
-      setUserAnswer(transcript);
-      setTimeout(() => onSubmit(transcript), 50);
+    if (!transcript) return;
+    
+    // 1) 먼저 음성 명령 처리 시도 (홈, 뒤로, 반복 등)
+    const handled = onSpeech(transcript);
+    if (handled) {
+      // 명령이 처리되었으면 transcript 초기화하고 종료
+      useVoiceStore.getState().resetTranscript();
+      return;
     }
-  }, [transcript]);
+    
+    // 2) 명령이 아니면 정답으로 처리
+    setUserAnswer(transcript);
+    setTimeout(() => onSubmit(transcript), 50);
+  }, [transcript, onSpeech]);
 
   const currentItem = items[currentIdx];
   
@@ -246,46 +299,6 @@ export default function Review() {
   const stopSTT = useCallback(() => {
     VoiceService.stopSTT();
   }, []);
-
-  // TTS는 useTTS 훅에서 가져옴
-
-  // 음성 명령 처리
-  useVoiceCommands({
-    home: () => navigate('/'),
-    back: () => navigate('/'),
-    submit: () => {
-      if (userAnswer.trim()) {
-        onSubmit();
-      } else {
-        speak("정답을 말하거나 입력해주세요.");
-      }
-    },
-    clear: () => {
-      setUserAnswer("");
-      inputRef.current?.focus();
-    },
-    next: () => {
-      if (currentIdx + 1 < items.length) {
-        setCurrentIdx(prev => prev + 1);
-        setUserAnswer("");
-        inputRef.current?.focus();
-      } else {
-        speak("마지막 문제입니다.");
-      }
-    },
-    repeat: () => {
-      if (currentItem) {
-        const p = currentItem.payload ?? currentItem;
-        const text = p.content?.trim() || p.text?.trim() || p.word?.trim() || "";
-        if (text) {
-          speak(`문제: ${text}`);
-        }
-      }
-    },
-    stop: () => {
-      if (isListening) stopSTT();
-    },
-  });
 
   const onSubmit = async (val?: string) => {
     if (!currentItem) return;

@@ -35,7 +35,11 @@ export function useSTT(): STTHookReturn {
   // 언마운트 시 정리
   useEffect(() => {
     return () => {
-      VoiceService.stopSTT();
+      // GlobalVoiceRecognition이 마이크를 관리 중이면 cleanup 스킵
+      const micMode = useVoiceStore.getState().micMode;
+      if (!micMode) {
+        VoiceService.stopSTT();
+      }
     };
   }, []);
 

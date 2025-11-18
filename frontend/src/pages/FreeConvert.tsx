@@ -7,9 +7,39 @@ import { convertBraille, saveReview } from "@/lib/api";
 import { useTTS } from "../hooks/useTTS";
 import useSTT from "../hooks/useSTT";
 import useVoiceCommands from "../hooks/useVoiceCommands";
+import { useVoiceStore } from "../store/voice";
+import VoiceService from "../services/VoiceService";
 import { normalizeCells } from "@/lib/brailleSafe";
 import { maskToGrid6 } from "@/lib/brailleGrid";
 import type { Cell } from "@/lib/brailleMap"; // [0|1,0|1,0|1,0|1,0|1,0|1]
+
+// 간단한 유사도 계산 함수 (오인식 보정용)
+function calculateSimilarity(s1: string, s2: string): number {
+  if (!s1 || !s2) return 0;
+  if (s1 === s2) return 1;
+  
+  const len1 = s1.length;
+  const len2 = s2.length;
+  if (len1 === 0 || len2 === 0) return 0;
+  
+  // 첫 글자 일치
+  if (s1[0] === s2[0] && len1 <= 3 && len2 <= 3) return 0.6;
+  
+  // 간단한 편집 거리 (최대 1글자 차이)
+  if (Math.abs(len1 - len2) <= 1) {
+    let diff = 0;
+    const minLen = Math.min(len1, len2);
+    for (let i = 0; i < minLen; i++) {
+      if (s1[i] !== s2[i]) diff++;
+    }
+    if (diff <= 1) return 0.7;
+  }
+  
+  // 부분 포함
+  if (s1.includes(s2) || s2.includes(s1)) return 0.5;
+  
+  return 0;
+}
 
 function Dot({ on }: { on: boolean }) {
   return (
@@ -53,6 +83,7 @@ export default function FreeConvert() {
   const navigate = useNavigate();
   const { speak, stop: stopTTS } = useTTS();
   const { start: startSTT, stop: stopSTT, isListening, transcript } = useSTT();
+  const alternatives = useVoiceStore(state => state.alternatives);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastTextRef = useRef<string>('');
   const lastTimeRef = useRef<number>(0);
@@ -64,6 +95,14 @@ export default function FreeConvert() {
   const [lastCommand, setLastCommand] = useState<string>('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const lastConvertedTextRef = useRef<string>(''); // 마지막 변환한 텍스트 추적
+  const isConvertingRef = useRef<boolean>(false); // 변환 중 플래그
+
+  // 페이지 진입 시 정답 목록 비우기 (자유변환 모드는 임의 텍스트 입력이므로 제어어 등록 불필요)
+  useEffect(() => {
+    VoiceService.setAnswerList([]);
+    console.log('[FreeConvert] 정답 목록 비움 (자유변환 모드는 제어어 등록 불필요)');
+  }, []);
 
   // 페이지 진입 시 자동 음성 안내
   useEffect(() => {
@@ -80,6 +119,7 @@ export default function FreeConvert() {
 
   // 뒤로가기 버튼 클릭 시 홈으로 이동
   const handleBack = () => {
+    VoiceService.setAnswerList([]); // 정답 목록 비우기
     navigate('/');
   };
 
@@ -90,7 +130,19 @@ export default function FreeConvert() {
       return;
     }
 
+    // 이미 변환 중이거나 같은 텍스트를 이미 변환했으면 무시
+    if (isConvertingRef.current) {
+      console.log('[FreeConvert] 이미 변환 중 - 무시');
+      return;
+    }
+    
+    if (text === lastConvertedTextRef.current && conversion?.original === text) {
+      console.log('[FreeConvert] 이미 변환된 텍스트 - 무시:', text);
+      return;
+    }
+
     try {
+      isConvertingRef.current = true;
       setIsConverting(true);
       setError(null);
 
@@ -115,6 +167,7 @@ export default function FreeConvert() {
       };
 
       setConversion(next);
+      lastConvertedTextRef.current = text; // 마지막 변환한 텍스트 저장
       speak(`변환 완료. ${text}의 점자 변환이 완료되었습니다.`);
     } catch (e: any) {
       console.error("[FreeConvert] Conversion error:", e);
@@ -122,6 +175,7 @@ export default function FreeConvert() {
       setConversion(null);
     } finally {
       setIsConverting(false);
+      isConvertingRef.current = false;
     }
   };
 
@@ -175,10 +229,15 @@ export default function FreeConvert() {
   const { onSpeech } = useVoiceCommands({
     home: () => {
       stopTTS();
+      VoiceService.setAnswerList([]); // 정답 목록 비우기
       navigate('/');
       stopSTT();
     },
-    back: handleBack,
+    back: () => {
+      stopSTT();
+      VoiceService.setAnswerList([]); // 정답 목록 비우기
+      handleBack();
+    },
     clear: () => {
       setInputText("");
       setError(null);
@@ -217,11 +276,37 @@ export default function FreeConvert() {
       // 2) 1.5초 내 동일 문장 차단
       const now = Date.now();
       if (text === lastTextRef.current && now - lastTimeRef.current < 1500) return;
-      lastTextRef.current = text;
+      
+      // 3) alternatives가 있으면 confidence가 높은 것을 우선 사용 (오인식 개선)
+      let finalText = text;
+      const currentAlternatives = useVoiceStore.getState().alternatives;
+      if (currentAlternatives && currentAlternatives.length > 0) {
+        // confidence가 0.75 이상인 대안이 있고, 원본과 다르면 사용
+        const highConfidenceAlt = currentAlternatives.find(alt => 
+          alt.confidence >= 0.75 && alt.transcript !== text
+        );
+        if (highConfidenceAlt) {
+          console.log(`[FreeConvert] 오인식 보정: "${text}" → "${highConfidenceAlt.transcript}" (confidence: ${highConfidenceAlt.confidence.toFixed(2)})`);
+          finalText = highConfidenceAlt.transcript;
+        } else {
+          // confidence가 가장 높은 대안 사용 (원본보다 높은 경우만)
+          const bestAlt = currentAlternatives[0]; // 이미 confidence 순으로 정렬됨
+          if (bestAlt && bestAlt.confidence > 0.6 && bestAlt.transcript !== text) {
+            // 원본과 유사도가 낮고 confidence가 높으면 사용
+            const similarity = calculateSimilarity(text, bestAlt.transcript);
+            if (similarity < 0.7 && bestAlt.confidence > 0.7) {
+              console.log(`[FreeConvert] 오인식 보정 (유사도 낮음): "${text}" → "${bestAlt.transcript}" (confidence: ${bestAlt.confidence.toFixed(2)}, similarity: ${similarity.toFixed(2)})`);
+              finalText = bestAlt.transcript;
+            }
+          }
+        }
+      }
+      
+      lastTextRef.current = finalText;
       lastTimeRef.current = now;
 
-      // 3) 입력 누적
-      setInputText(prev => (prev && prev.trim() ? prev + ' ' + text : text));
+      // 4) 입력 누적
+      setInputText(prev => (prev && prev.trim() ? prev + ' ' + finalText : finalText));
     };
     window.addEventListener('voice:transcript', onVoiceTranscript as EventListener);
     return () => window.removeEventListener('voice:transcript', onVoiceTranscript as EventListener);
@@ -231,6 +316,16 @@ export default function FreeConvert() {
   const autoTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!inputText || !inputText.trim()) return;
+    
+    // 이미 변환 중이면 무시
+    if (isConvertingRef.current) return;
+    
+    // 같은 텍스트를 이미 변환했으면 무시
+    const trimmedText = inputText.trim();
+    if (trimmedText === lastConvertedTextRef.current && conversion?.original === trimmedText) {
+      return;
+    }
+    
     window.clearTimeout(autoTimer.current);
     autoTimer.current = window.setTimeout(() => {
       setError(null);
@@ -241,7 +336,7 @@ export default function FreeConvert() {
       handleConvert();
     }, 600);
     return () => window.clearTimeout(autoTimer.current);
-  }, [inputText, isListening, stopSTT]);
+  }, [inputText, isListening, stopSTT, conversion]);
 
   return (
     <AppShellMobile title="자유 변환" showBackButton onBack={handleBack}>

@@ -14,6 +14,7 @@ import { saveLessonSession } from "@/store/lessonSession";
 import useTTS from '../hooks/useTTS';
 import useSTT from '../hooks/useSTT';
 import useVoiceCommands from '../hooks/useVoiceCommands';
+import { useVoiceStore } from '../store/voice';
 import SpeechBar from '../components/input/SpeechBar';
 import AppShellMobile from '../components/ui/AppShellMobile';
 
@@ -200,6 +201,9 @@ export default function LearnStep() {
   }, [idx, heading, current]);
 
   const onNext = () => {
+    // 이전 TTS 중단 (다음으로 넘어갈 때 이전 음성이 겹치지 않도록)
+    stop();
+    
     if (idx < items.length - 1) {
       // ✅ 함수형 업데이트로 오프바이원 방지
       setIdx((i) => i + 1);
@@ -208,7 +212,12 @@ export default function LearnStep() {
       navigate(`/quiz?mode=${mode}`, { replace: true });
     }
   };
-  const prev = () => setIdx(Math.max(0, idx - 1));
+  
+  const prev = () => {
+    // 이전 TTS 중단
+    stop();
+    setIdx(Math.max(0, idx - 1));
+  };
   const repeat = () => {
     let t = "";
     if (current?.decomposeTTS && Array.isArray(current.decomposeTTS)) {
@@ -230,6 +239,11 @@ export default function LearnStep() {
     navigate('/learn');
   };
 
+  // 마지막 명령 실행 시간 추적 (debounce용)
+  const lastCommandTimeRef = useRef<number>(0);
+  const lastCommandRef = useRef<string>('');
+  const MIN_COMMAND_INTERVAL = 800; // 최소 0.8초 간격
+
   // 음성 명령 처리
   const { onSpeech } = useVoiceCommands({
     home: () => {
@@ -237,14 +251,36 @@ export default function LearnStep() {
       navigate('/');
       stopSTT();
     },
-    back: handleBack,
+    back: () => {
+      stopSTT();
+      handleBack();
+    },
     next: () => {
+      const now = Date.now();
+      // 같은 명령이 너무 빠르게 연속으로 들어오면 무시
+      if (now - lastCommandTimeRef.current < MIN_COMMAND_INTERVAL && lastCommandRef.current === 'next') {
+        return;
+      }
+      lastCommandTimeRef.current = now;
+      lastCommandRef.current = 'next';
       onNext();
     },
     prev: () => {
+      const now = Date.now();
+      if (now - lastCommandTimeRef.current < MIN_COMMAND_INTERVAL && lastCommandRef.current === 'prev') {
+        return;
+      }
+      lastCommandTimeRef.current = now;
+      lastCommandRef.current = 'prev';
       prev();
     },
     repeat: () => {
+      const now = Date.now();
+      if (now - lastCommandTimeRef.current < MIN_COMMAND_INTERVAL && lastCommandRef.current === 'repeat') {
+        return;
+      }
+      lastCommandTimeRef.current = now;
+      lastCommandRef.current = 'repeat';
       repeat();
     },
     start: () => {
@@ -267,24 +303,48 @@ export default function LearnStep() {
   useEffect(() => {
     if (!transcript) return;
     onSpeech(transcript);
+    // 처리 후 transcript 초기화 - 이전 페이지의 transcript가 남지 않도록
+    useVoiceStore.getState().resetTranscript();
   }, [transcript, onSpeech]);
 
   // 전역 음성 이벤트 수신 (next/prev/repeat)
+  // ref를 사용하여 최신 함수를 참조하도록 보장
+  const onNextRef = useRef(onNext);
+  const prevRef = useRef(prev);
+  const repeatRef = useRef(repeat);
+  
+  useEffect(() => {
+    onNextRef.current = onNext;
+    prevRef.current = prev;
+    repeatRef.current = repeat;
+  }, [onNext, prev, repeat]);
+
   useEffect(() => {
     const onVoice = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
       if (!detail?.type) return;
+      console.log('[LearnStep] 음성 명령 이벤트 수신:', detail.type);
+      
+      const now = Date.now();
+      // debounce 체크 (중복 처리 방지)
+      if (now - lastCommandTimeRef.current < MIN_COMMAND_INTERVAL && lastCommandRef.current === detail.type) {
+        console.log(`[LearnStep] ${detail.type} 명령 debounce - 무시`);
+        return;
+      }
+      lastCommandTimeRef.current = now;
+      lastCommandRef.current = detail.type;
+      
       if (detail.type === 'next') {
-        onNext();
+        onNextRef.current();
       } else if (detail.type === 'prev') {
-        prev();
+        prevRef.current();
       } else if (detail.type === 'repeat') {
-        repeat();
+        repeatRef.current();
       }
     };
     window.addEventListener('voice:command', onVoice as EventListener);
     return () => window.removeEventListener('voice:command', onVoice as EventListener);
-  }, [onNext, prev, repeat]);
+  }, []);
 
   // 제목과 진행률 표시
   const headerTitle = `${title} (${idx + 1}/${items.length})`;

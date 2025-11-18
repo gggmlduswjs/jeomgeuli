@@ -6,11 +6,14 @@ import { AnswerCard } from '../components/ui/AnswerCard';
 import { BrailleOutputPanel } from '../components/braille/BrailleOutputPanel';
 import ToastA11y from '../components/system/ToastA11y';
 import { useTTS } from '../hooks/useTTS';
+import useSTT from '../hooks/useSTT';
 import useBrailleBLE from '../hooks/useBrailleBLE';
 import { useBraillePlayback } from '../hooks/useBraillePlayback';
 import useVoiceCommands from '../hooks/useVoiceCommands';
 import { askChat, askChatWithKeywords, type ChatResponse, fetchExplore, saveReview } from '../lib/api';
 import type { ChatMessage } from '../types';
+import { useVoiceStore } from '../store/voice';
+import VoiceEventBus, { VoiceEventType } from '../lib/voice/VoiceEventBus';
 
 // function extractBulletsFromMarkdown(md?: string): string[] {
 //   if (!md) return [];
@@ -47,6 +50,7 @@ export default function Explore() {
   const [isSaving, setIsSaving] = useState(false);
 
   const { speak } = useTTS();
+  const { stop: stopSTT } = useSTT();
   const { isConnected, connect, disconnect } = useBrailleBLE();
   const [isTTSEnabled, setIsTTSEnabled] = useState(true);
   const braille = useBraillePlayback({
@@ -55,6 +59,15 @@ export default function Explore() {
       characteristicUUID: "00002a00-0000-1000-8000-00805f9b34fb",
     },
   });
+
+  // 페이지 진입 시 이전 데이터 초기화
+  useEffect(() => {
+    console.log('[Explore] 페이지 진입 - 이전 데이터 초기화');
+    setMessages([]);
+    setExploreData(null);
+    setCurrentBraille([]);
+    useVoiceStore.getState().resetTranscript();
+  }, [location.pathname]); // 경로가 변경될 때마다 초기화
 
   // 페이지 진입 시 자동 음성 안내
   useEffect(() => {
@@ -351,7 +364,18 @@ export default function Explore() {
 
   // 메시지 전송 처리
   const handleSubmit = useCallback(async (userText: string) => {
-    if (!userText.trim() || isLoading) return;
+    const trimmedText = userText?.trim();
+    if (!trimmedText) {
+      console.log('[Explore] handleSubmit: 빈 텍스트 - 건너뜀');
+      return;
+    }
+    
+    if (isLoading) {
+      console.log('[Explore] handleSubmit: 이미 로딩 중 - 건너뜀');
+      return;
+    }
+
+    console.log('[Explore] handleSubmit 실행:', trimmedText);
 
     // 사용자 메시지 추가
     const userMsg: ChatMessage = {
@@ -424,13 +448,21 @@ export default function Explore() {
   }, [isLoading, askChat, handleAiResponse, speak]);
 
   // 음성 명령 처리
-  useVoiceCommands({
+  const { onSpeech } = useVoiceCommands({
     // 네비게이션
     home: () => {
+      stopSTT();
       window.location.href = '/';
     },
     back: () => {
+      stopSTT();
       window.history.back();
+    },
+    
+    // 복습하기
+    review: () => {
+      stopSTT();
+      navigate('/review');
     },
     
     // 점자 제어
@@ -462,7 +494,7 @@ export default function Explore() {
     
     // 도움말
     help: () => {
-      const helpText = '사용 가능한 음성 명령어: 홈, 뒤로, 점자켜, 점자꺼, 점자연결, 점자해제, 다음, 반복, 시작, 정지, 자세히, 뉴스, 날씨, 도움말';
+      const helpText = '사용 가능한 음성 명령어: 홈, 뒤로, 점자켜, 점자꺼, 점자연결, 점자해제, 다음, 반복, 시작, 정지, 자세히, 뉴스, 날씨, 도움말, 점자출력, 복습하기';
       speak(helpText);
     },
     
@@ -484,6 +516,177 @@ export default function Explore() {
       // ChatLikeInput에서 처리
     },
   });
+
+  // 마이크 시작 시 transcript 초기화
+  useEffect(() => {
+    const unsubscribe = VoiceEventBus.onMicIntent((event) => {
+      if (event.action === 'start') {
+        console.log('[Explore] 마이크 시작 - transcript 초기화');
+        useVoiceStore.getState().resetTranscript();
+        // ChatLikeInput의 입력란도 초기화하려면 필요시 추가
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // 음성 인식 결과를 자동으로 검색 처리
+  const lastProcessedTextRef = useRef<string>('');
+  const lastProcessedTimeRef = useRef<number>(0);
+  const autoSearchTimerRef = useRef<number | undefined>(undefined);
+  const pendingSearchTextRef = useRef<string | null>(null); // 타이머에서 사용할 텍스트 저장
+
+  useEffect(() => {
+    const onVoiceTranscript = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as { text?: string } | undefined;
+      const text = detail?.text?.trim();
+      if (!text) return;
+
+      const now = Date.now();
+      // 중복 처리 방지: 1.5초 내 동일 텍스트 무시
+      if (text === lastProcessedTextRef.current && now - lastProcessedTimeRef.current < 1500) {
+        return;
+      }
+
+      // 짧은 텍스트(1-2글자)는 검색하지 않음 (중간 결과로 인한 오검색 방지)
+      // 단, 명령어 패턴이 포함된 경우는 예외
+      const trimmedText = text.trim();
+      const normalizedForCheck = trimmedText.toLowerCase().replace(/[.,!?]/g, '');
+      const isCommandPattern = normalizedForCheck.includes('점자') || 
+                                normalizedForCheck.includes('복습') ||
+                                normalizedForCheck.includes('탐색');
+      
+      if (trimmedText.length <= 2 && !isCommandPattern) {
+        console.log('[Explore] 짧은 텍스트 무시 (중간 결과 가능성):', trimmedText);
+        return;
+      }
+
+      // "점자 출력" 명령어 처리 (명령어 라우터보다 먼저 체크)
+      // 부분 일치도 허용하여 "점자", "점자출력", "점자 출력" 모두 인식
+      const normalizedText = text.toLowerCase().replace(/\s+/g, '');
+      if (normalizedText.includes('점자출력') || 
+          (normalizedText.includes('점자') && normalizedText.length >= 2)) {
+        const lastAssistantMsg = messages
+          .filter(m => m.role === 'assistant' && m.keywords && m.keywords.length > 0)
+          .pop();
+        if (lastAssistantMsg?.keywords && lastAssistantMsg.keywords.length > 0) {
+          console.log('[Explore] 점자 출력 명령어 처리:', lastAssistantMsg.keywords);
+          handleBrailleOutput(lastAssistantMsg.keywords);
+          lastProcessedTextRef.current = text;
+          lastProcessedTimeRef.current = now;
+          return;
+        } else {
+          console.warn('[Explore] 점자 출력: 출력할 키워드가 없습니다.');
+          speak('출력할 키워드가 없습니다. 먼저 검색을 해주세요.');
+          return;
+        }
+      }
+
+      // "복습하기" 명령어 처리 (명령어 라우터보다 먼저 체크)
+      const normalizedForReview = text.toLowerCase().replace(/[.,!?]/g, '').trim();
+      if (normalizedForReview === '복습하기' || normalizedForReview === '복습' || 
+          normalizedForReview === '복습하기로' || normalizedForReview === '복습으로' ||
+          (normalizedForReview.includes('복습') && normalizedForReview.length >= 2)) {
+        const lastAssistantMsg = messages
+          .filter(m => m.role === 'assistant' && m.keywords && m.keywords.length > 0)
+          .pop();
+        if (lastAssistantMsg?.keywords && lastAssistantMsg.keywords.length > 0) {
+          console.log('[Explore] 복습하기 명령어 처리:', lastAssistantMsg.keywords);
+          // 키워드를 복습 목록에 저장한 후 페이지 이동
+          handleLearn(lastAssistantMsg.keywords).then(() => {
+            // 저장 완료 후 복습 페이지로 이동
+            stopSTT();
+            navigate('/review');
+          }).catch((error) => {
+            console.error('[Explore] 복습하기 처리 중 오류:', error);
+            speak('복습 목록 저장 중 오류가 발생했습니다.');
+          });
+          lastProcessedTextRef.current = text;
+          lastProcessedTimeRef.current = now;
+          return;
+        } else {
+          console.warn('[Explore] 복습하기: 저장할 키워드가 없습니다.');
+          speak('저장할 키워드가 없습니다. 먼저 검색을 해주세요.');
+          return;
+        }
+      }
+
+      // 명령어 체크 (Explore 페이지에서는 "탐색" 명령어를 검색으로 처리)
+      const handled = onSpeech(text);
+      if (handled) {
+        // "탐색" 관련 명령어는 Explore 페이지에서 검색으로 처리
+        const normalized = text.toLowerCase().replace(/[.,!?]/g, '').trim();
+        if (normalized === '탐색' || normalized === '정보탐색' || normalized === '정보 탐색' || normalized === '검색') {
+          console.log('[Explore] "탐색" 명령어를 검색으로 처리:', text);
+          // 검색으로 처리하도록 계속 진행 (return하지 않음)
+        } else {
+          console.log('[Explore] 명령어 처리됨 - 검색 건너뜀:', text);
+          lastProcessedTextRef.current = text;
+          lastProcessedTimeRef.current = now;
+          return;
+        }
+      }
+
+      // 명령어가 아닌 경우 또는 "탐색" 명령어인 경우 즉시 자동 검색
+      console.log('[Explore] 음성 인식 자동 검색 예약:', text);
+      lastProcessedTextRef.current = text;
+      lastProcessedTimeRef.current = now;
+      pendingSearchTextRef.current = text; // ref에 저장하여 타이머에서 사용
+
+      // 기존 타이머 취소하고 즉시 실행 (각 transcript마다 개별 검색)
+      if (autoSearchTimerRef.current) {
+        clearTimeout(autoSearchTimerRef.current);
+        autoSearchTimerRef.current = undefined;
+      }
+
+      // 즉시 검색 실행 (각 음성 인식 결과마다 개별 검색)
+      // trimmedText는 이미 위에서 선언되었으므로 재사용
+      const currentIsLoading = isLoading;
+      const currentIsExploreLoading = isExploreLoading;
+      
+      if (!currentIsLoading && !currentIsExploreLoading && trimmedText) {
+        console.log('[Explore] 음성 인식 자동 검색 즉시 실행:', trimmedText);
+        handleSubmit(trimmedText);
+        pendingSearchTextRef.current = null;
+      } else {
+        // 조건이 맞지 않으면 짧은 지연 후 재시도
+        autoSearchTimerRef.current = window.setTimeout(() => {
+          const retryText = pendingSearchTextRef.current || trimmedText;
+          const retryIsLoading = isLoading;
+          const retryIsExploreLoading = isExploreLoading;
+          
+          console.log('[Explore] 자동 검색 재시도 체크:', {
+            text: retryText.trim(),
+            isLoading: retryIsLoading,
+            isExploreLoading: retryIsExploreLoading,
+            canExecute: !retryIsLoading && !retryIsExploreLoading && retryText.trim()
+          });
+          
+          if (!retryIsLoading && !retryIsExploreLoading && retryText.trim()) {
+            console.log('[Explore] 음성 인식 자동 검색 재시도 실행:', retryText.trim());
+            handleSubmit(retryText.trim());
+          } else {
+            console.warn('[Explore] 자동 검색 재시도 건너뜀 - 조건 불만족:', {
+              isLoading: retryIsLoading,
+              isExploreLoading: retryIsExploreLoading,
+              hasText: !!retryText.trim()
+            });
+          }
+          pendingSearchTextRef.current = null;
+          autoSearchTimerRef.current = undefined;
+        }, 100);
+      }
+    };
+
+    window.addEventListener('voice:transcript', onVoiceTranscript as EventListener);
+    return () => {
+      window.removeEventListener('voice:transcript', onVoiceTranscript as EventListener);
+      if (autoSearchTimerRef.current) {
+        clearTimeout(autoSearchTimerRef.current);
+        autoSearchTimerRef.current = undefined;
+      }
+      pendingSearchTextRef.current = null;
+    };
+  }, [onSpeech, handleSubmit, isLoading, isExploreLoading, messages, handleBrailleOutput, handleLearn, navigate, stopSTT, speak]);
 
   return (
     <div className="flex flex-col min-h-screen bg-bg text-fg">

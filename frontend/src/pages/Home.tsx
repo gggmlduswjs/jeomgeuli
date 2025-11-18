@@ -6,6 +6,7 @@ import SpeechBar from '../components/input/SpeechBar';
 import useTTS from '../hooks/useTTS';
 import useSTT from '../hooks/useSTT';
 import useVoiceCommands from '../hooks/useVoiceCommands';
+import micMode from '../lib/voice/MicMode';
 import ToastA11y from '../components/system/ToastA11y';
 
 export default function Home() {
@@ -190,14 +191,13 @@ export default function Home() {
           {/* 중앙 로고 버튼: 길게 눌러 음성 인식 시작 */}
           <button
             onPointerDown={(e) => {
-              // 홈 화면에서도 마이크 시작 시 안내멘트 즉시 중단 + 마이크 모드 on
+              // TTS 중지 및 마이크 시작 (버튼이므로 GlobalVoiceRecognition 필터링에 걸리므로 직접 처리)
               try { stopTTS(); } catch {}
-              try { window.dispatchEvent(new CustomEvent('voice:mic-mode', { detail: { active: true } })); } catch {}
-              startSTT();
+              micMode.requestStart();
             }}
             onPointerUp={(e) => {
-              stopSTT();
-              try { window.dispatchEvent(new CustomEvent('voice:mic-mode', { detail: { active: false } })); } catch {}
+              // 마이크 중지
+              micMode.requestStop();
             }}
             className={`absolute inset-[33%] rounded-full bg-gradient-to-br from-primary via-primary/90 to-accent text-white flex items-center justify-center focus:outline-none shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 touch-manipulation ${
               isListening ? 'animate-pulse ring-4 ring-primary/50 ring-offset-2' : 'hover:ring-2 hover:ring-primary/30'

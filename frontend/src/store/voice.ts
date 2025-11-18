@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import VoiceEventBus, { VoiceEventType } from '../lib/voice/VoiceEventBus';
 import micMode from '../lib/voice/MicMode';
 
+// 무한 루프 방지를 위한 플래그
+let isUpdatingFromEvent = false;
+
 export interface VoiceState {
   // STT 상태
   isListening: boolean;
@@ -80,12 +83,19 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   },
 
   setMicMode: (active: boolean) => {
+    const current = get().micMode;
+    // 상태가 이미 동일하면 업데이트하지 않음 (무한 루프 방지)
+    if (current === active) {
+      return;
+    }
     set({ micMode: active });
-    // 이벤트 발생 (하위 호환성)
-    VoiceEventBus.emit({
-      type: VoiceEventType.MIC_MODE,
-      detail: { active },
-    });
+    // 이벤트에서 업데이트 중이 아닐 때만 이벤트 발생 (무한 루프 방지)
+    if (!isUpdatingFromEvent) {
+      VoiceEventBus.emit({
+        type: VoiceEventType.MIC_MODE,
+        detail: { active },
+      });
+    }
   },
 
   toggleMicMode: () => {
@@ -121,7 +131,16 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 VoiceEventBus.on(VoiceEventType.MIC_MODE, (event) => {
   const detail = event.detail as { active?: boolean };
   if (typeof detail?.active === 'boolean') {
-    useVoiceStore.getState().setMicMode(detail.active);
+    const current = useVoiceStore.getState().micMode;
+    // 상태가 이미 동일하면 업데이트하지 않음 (무한 루프 방지)
+    if (current !== detail.active) {
+      isUpdatingFromEvent = true;
+      try {
+        useVoiceStore.getState().setMicMode(detail.active);
+      } finally {
+        isUpdatingFromEvent = false;
+      }
+    }
   }
 });
 

@@ -5,6 +5,7 @@ import SpeechBar from "../components/input/SpeechBar";
 import useTTS from "../hooks/useTTS";
 import useSTT from "../hooks/useSTT";
 import useVoiceCommands from "../hooks/useVoiceCommands";
+import { useVoiceStore } from '../store/voice';
 
 export default function LearnIndex() {
   const navigate = useNavigate();
@@ -119,6 +120,8 @@ export default function LearnIndex() {
   useEffect(() => {
     if (!transcript) return;
     onSpeech(transcript);
+    // 처리 후 transcript 초기화 - 이전 페이지의 transcript가 남지 않도록
+    useVoiceStore.getState().resetTranscript();
   }, [transcript, onSpeech]);
 
   return (

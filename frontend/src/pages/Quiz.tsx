@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
-import { ArrowLeft, RotateCcw, Mic, MicOff } from "lucide-react";
+import { ArrowLeft, RotateCcw } from "lucide-react";
 import type { LessonItem } from "@/lib/normalize";
 import type { LessonMode } from "@/store/lessonSession";
 import { loadLessonSession, saveLessonSession } from "@/store/lessonSession";
@@ -76,29 +76,99 @@ const promptText = (it: LessonItem) =>
 const answerText = (it: LessonItem) =>
   (it as any).name ?? it.word ?? it.sentence ?? (it as any).text ?? it.char ?? "";
 
+// 🧠 퀴즈 정답용 오인식 패턴 사전 (필요하면 점점 추가)
+const ANSWER_MISREC_MAP: Record<string, string> = {
+  // 자모 이름 발음 흔한 오인식
+  "디긋": "디귿",
+  "티긋": "티읕",
+  "시옷": "시옷", // 그대로지만 나중에 변형 패턴 추가 가능
+  "삼 오": "자모", // 필요시 추가
+  // 추가 오인식 패턴은 실제 사용 중 발견되는 대로 여기에 추가
+};
+
+// 간단한 정규화: 소문자 + 공백/기호 제거
+function normalizeAnswerText(raw: string): string {
+  return String(raw ?? "")
+    .toLowerCase()
+    .replace(/[~!@#$%^&*()_+=[\]{};:"/\\|<>""''，､、。．·ㆍ…]/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+// 오인식 보정 적용
+function canonicalizeAnswer(raw: string): string {
+  let t = normalizeAnswerText(raw);
+
+  // 직접 매핑 확인
+  if (ANSWER_MISREC_MAP[t]) {
+    return ANSWER_MISREC_MAP[t];
+  }
+
+  // 부분 매칭 (텍스트에 오인식 패턴이 포함된 경우)
+  for (const [wrong, correct] of Object.entries(ANSWER_MISREC_MAP)) {
+    const wrongNormalized = normalizeAnswerText(wrong);
+    if (t.includes(wrongNormalized)) {
+      t = t.replace(wrongNormalized, normalizeAnswerText(correct));
+    }
+  }
+
+  return t;
+}
+
+// (선택) 아주 단순 유사도: 거의 비슷하면 OK 처리
+function simpleSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  
+  // 글자 하나만 다른 경우 (같은 길이)
+  if (a.length === b.length) {
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) diff++;
+    }
+    if (diff === 1) return 0.8; // 한 글자만 다르면 80% 유사도
+  }
+  
+  // 부분 포함
+  if (a.includes(b) || b.includes(a)) return 0.7;
+  
+  return 0;
+}
+
 // 🎯 STT 결과와 정답을 유연하게 매칭하는 함수
 function isAnswerMatch(userInput: string, correctAnswer: string, item: LessonItem): boolean {
-  const normalizedUser = userInput.trim().toLowerCase();
-  const normalizedCorrect = correctAnswer.trim().toLowerCase();
-  
-  // 1) 정확한 매칭
-  if (normalizedUser === normalizedCorrect) return true;
-  
+  // 오인식 보정 적용
+  const userNorm = canonicalizeAnswer(userInput);
+  const correctNorm = canonicalizeAnswer(correctAnswer);
+
+  if (!userNorm || !correctNorm) return false;
+
+  // 1) 완전 일치
+  if (userNorm === correctNorm) return true;
+
   // 2) 자모 특별 처리: "기역" ↔ "ㄱ" 양방향 매칭
   const char = item.char?.trim();
   const name = (item as any).name?.trim();
   
   if (char && name) {
+    const charNorm = canonicalizeAnswer(char);
+    const nameNorm = canonicalizeAnswer(name);
+    
     // "기역"이라고 말했는데 STT가 "ㄱ"으로 인식한 경우
-    if ((normalizedUser === char.toLowerCase() && normalizedCorrect === name.toLowerCase()) ||
+    if ((userNorm === charNorm && correctNorm === nameNorm) ||
         // "ㄱ"이라고 말했는데 STT가 "기역"으로 인식한 경우  
-        (normalizedUser === name.toLowerCase() && normalizedCorrect === char.toLowerCase())) {
+        (userNorm === nameNorm && correctNorm === charNorm)) {
       return true;
     }
   }
   
   // 3) 부분 매칭 (예: "기역"에서 "기"만 인식된 경우)
-  if (normalizedCorrect.includes(normalizedUser) || normalizedUser.includes(normalizedCorrect)) {
+  if (correctNorm.includes(userNorm) || userNorm.includes(correctNorm)) {
+    return true;
+  }
+  
+  // 4) 유사도 기반 (거의 비슷하면 정답 처리)
+  if (simpleSimilarity(userNorm, correctNorm) >= 0.75) {
     return true;
   }
   
@@ -131,6 +201,11 @@ export default function Quiz() {
   const isListening = useVoiceStore(state => state.isListening);
   const transcript = useVoiceStore(state => state.transcript);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 페이지 진입 시 이전 transcript 초기화 (이전 데이터가 자동 처리되지 않도록)
+  useEffect(() => {
+    useVoiceStore.getState().resetTranscript();
+  }, []); // 페이지 로드 시 한 번만 실행
 
   // 페이지 진입 시 자동 음성 안내
   useEffect(() => {
@@ -174,6 +249,29 @@ export default function Quiz() {
   }, [mode]);
 
   const cur = useMemo(() => (i < pool.length ? pool[i] : null), [i, pool]);
+
+  // 현재 문제의 정답과 풀의 모든 정답을 VoiceService에 등록
+  useEffect(() => {
+    if (!pool.length) return;
+    
+    // 풀의 모든 정답 추출
+    const allAnswers = pool.map(item => {
+      const answer = answerText(item).trim();
+      return answer;
+    }).filter(Boolean);
+    
+    // 현재 문제의 정답 우선 등록
+    const currentAnswer = cur ? answerText(cur).trim() : '';
+    const answerList = currentAnswer 
+      ? [currentAnswer, ...allAnswers.filter(a => a !== currentAnswer)]
+      : allAnswers;
+    
+    // VoiceService에 정답 목록 전달
+    if (answerList.length > 0) {
+      VoiceService.setAnswerList(answerList);
+      console.log('[Quiz] 정답 목록 등록:', answerList.length, '개');
+    }
+  }, [pool, cur, i]);
 
   // 문제가 변경될 때마다 음성 재생
   useEffect(() => {
@@ -226,69 +324,21 @@ export default function Quiz() {
     return () => { cancelled = true; };
   }, [cur, mode]);
 
-  // STT 결과 처리 - VoiceService 사용
-  useEffect(() => {
-    if (transcript) {
-      console.log('[Quiz] STT result:', transcript);
-      setUser(transcript);
-      // 인식 끝나면 자동 제출(원하면 해제 가능)
-      setTimeout(() => onSubmit(transcript), 50);
-    }
-  }, [transcript]);
-
-  const startSTT = async () => {
-    try {
-      console.log('[Quiz] Starting STT...');
-      await VoiceService.startSTT({
-        onResult: (text) => {
-          console.log('[Quiz] STT result:', text);
-          setUser(text);
-          setTimeout(() => onSubmit(text), 50);
-        },
-        onError: (error) => {
-          console.error('[Quiz] STT error:', error);
-          speak('음성 인식에 실패했습니다. 다시 시도해주세요.');
-        },
-        autoStop: true,
-      });
-    } catch (e) {
-      console.error('[Quiz] STT start error:', e);
-      speak('음성 인식을 시작할 수 없습니다.');
-    }
-  };
-
-  const stopSTT = () => {
-    console.log('[Quiz] Stopping STT...');
-    VoiceService.stopSTT();
-  };
-
   // TTS는 useTTS 훅에서 가져옴
   const speakPrompt = () => {
     // "점자 문제입니다. 정답을 말하세요." 정도의 안내
     speak("점자 문제입니다. 정답을 말하거나 입력하세요.");
   };
 
-  // 음성 명령 처리
-  useVoiceCommands({
-    home: () => nav('/'),
-    back: () => nav('/learn'),
-    submit: () => {
-      if (user.trim()) {
-        onSubmit();
-      } else {
-        speak("정답을 말하거나 입력해주세요.");
-      }
+  // 음성 명령 처리 - 네비게이션만 처리 (정답은 transcript로 처리)
+  const { onSpeech } = useVoiceCommands({
+    home: () => {
+      VoiceService.stopSTT();
+      nav('/');
     },
-    clear: () => {
-      setUser("");
-      inputRef.current?.focus();
-    },
-    next: () => {
-      if (user.trim()) {
-        onSubmit();
-      } else {
-        speak("정답을 먼저 입력해주세요.");
-      }
+    back: () => {
+      VoiceService.stopSTT();
+      nav('/learn');
     },
     repeat: () => {
       speakPrompt();
@@ -296,7 +346,66 @@ export default function Quiz() {
     stop: () => {
       if (isListening) stopSTT();
     },
+    // submit, clear, next는 제거 - 정답으로 처리되도록
   });
+
+  // 마지막 처리된 transcript 추적 (중복 방지)
+  const lastProcessedTranscriptRef = useRef<string>('');
+  const lastProcessedTimeRef = useRef<number>(0);
+  const isProcessingRef = useRef<boolean>(false); // 처리 중 플래그
+
+  // STT 결과 처리 - 명령 우선, 아니면 정답으로 처리
+  useEffect(() => {
+    if (!transcript) return;
+    
+    // GlobalVoiceRecognition이 마이크를 켤 때만 transcript가 생성되므로,
+    // isListening 체크 없이 바로 처리 (이전 transcript는 페이지 로드 시 이미 초기화됨)
+    
+    // 이미 처리 중이면 무시
+    if (isProcessingRef.current) {
+      console.log('[Quiz] 이미 처리 중 - 무시:', transcript);
+      return;
+    }
+    
+    // 중복 처리 방지 (같은 transcript를 1초 이내에 다시 처리하지 않음)
+    const now = Date.now();
+    if (transcript === lastProcessedTranscriptRef.current && now - lastProcessedTimeRef.current < 1000) {
+      console.log('[Quiz] 중복 transcript 무시:', transcript);
+      useVoiceStore.getState().resetTranscript();
+      return;
+    }
+    
+    // 중간 결과 필터링 제거 - 자모 모드에서는 답안이 짧을 수 있음
+    // TranscriptProcessor가 이미 최종 결과만 처리하므로, 추가 필터링 불필요
+    
+    isProcessingRef.current = true;
+    lastProcessedTranscriptRef.current = transcript;
+    lastProcessedTimeRef.current = now;
+    
+    console.log('[Quiz] STT result (최종):', transcript);
+    
+    // transcript를 즉시 초기화하여 중복 처리 방지
+    useVoiceStore.getState().resetTranscript();
+    
+    // 1) 먼저 음성 명령 처리 시도 (홈, 뒤로, 반복 등)
+    const handled = onSpeech(transcript);
+    if (handled) {
+      // 명령이 처리되었으면 종료
+      isProcessingRef.current = false;
+      return;
+    }
+    
+    // 2) 명령이 아니면 정답으로 처리
+    setUser(transcript);
+    // 인식 끝나면 자동 제출
+    setTimeout(() => {
+      onSubmit(transcript);
+      // 제출 후 처리 플래그 리셋 (다음 답안을 받을 수 있도록)
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 1000);
+    }, 50);
+  }, [transcript, onSpeech]); // isListening 제거 (GlobalVoiceRecognition이 마이크를 켤 때만 transcript 생성)
 
   const onSubmit = async (val?: string) => {
     if (!cur) return;
@@ -431,15 +540,7 @@ export default function Quiz() {
                 <RotateCcw className="inline w-4 h-4 mr-1" /> 다시 듣기
               </button>
 
-              {/* 음성 입력 토글 */}
-              <button
-                onClick={isListening ? stopSTT : startSTT}
-                className={`px-4 py-3 rounded-2xl ${isListening ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary`}
-                aria-pressed={isListening}
-                title="음성으로 정답 말하기(예: 디귿)"
-              >
-                {isListening ? <><MicOff className="inline w-4 h-4 mr-1" /> 끄기</> : <><Mic className="inline w-4 h-4 mr-1" /> 음성 입력</>}
-              </button>
+              {/* 음성 입력 버튼 제거 - 화면을 누르는 방식으로 통일 (GlobalVoiceRecognition이 처리) */}
 
               <button
                 onClick={() => onSubmit()}
