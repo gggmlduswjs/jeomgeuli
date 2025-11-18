@@ -66,6 +66,11 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
 
   // STT 안전 시작/중지 (MicMode intents에 맞춰 수행)
   const safeStart = useCallback(() => {
+    // 이미 리스닝 중이면 무시
+    if (isListening) {
+      return;
+    }
+    
     if (sttLockRef.current) return;
     const now = Date.now();
     if (now < coolUntilRef.current) return;
@@ -81,21 +86,29 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       try { window.dispatchEvent(new CustomEvent('voice:mic-mode', { detail: { active: true } })); } catch {}
       startSTT();
     } finally {
-      sttLockRef.current = false;
+      // 락을 즉시 해제하지 않고 짧은 딜레이 후 해제 (중복 호출 방지)
+      setTimeout(() => {
+        sttLockRef.current = false;
+      }, 50);
     }
-  }, [startSTT, stopTTS, stopAllMedia, playBeep]);
+  }, [startSTT, stopTTS, stopAllMedia, playBeep, isListening]);
 
   const safeStop = useCallback(() => {
+    // 이미 중지되었으면 무시
+    if (!isListening) {
+      return;
+    }
+    
     if (sttLockRef.current) return;
     sttLockRef.current = true;
     try {
       stopSTT();
     } finally {
       sttLockRef.current = false;
-      coolUntilRef.current = Date.now() + 600;
+      coolUntilRef.current = Date.now() + 300; // 600ms → 300ms로 단축
       try { VoiceEventBus.emitMicMode(false); } catch {}
     }
-  }, [stopSTT]);
+  }, [stopSTT, isListening]);
 
   // 학습 메뉴 항목 선택 처리 함수 (재사용)
   const handleLearnMenuSelection = useCallback((text: string) => {
@@ -265,9 +278,9 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       
       console.log('[GlobalVoice] 최종 인식 결과 수신:', finalText);
       
-      // 중복 처리 방지
+      // 중복 처리 방지 (시간 단축: 500ms → 300ms)
       const now = Date.now();
-      if (finalText === lastBroadcastRef.current.text && now - lastBroadcastRef.current.time < 500) {
+      if (finalText === lastBroadcastRef.current.text && now - lastBroadcastRef.current.time < 300) {
         console.log('[GlobalVoice] 최종 결과 중복 무시:', finalText);
         return;
       }
@@ -364,14 +377,14 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
         return; // 메뉴 선택도 즉시 처리
       }
       
-      // 명령어가 아닌 경우에만 debounce 적용 (0.5초)
+      // 명령어가 아닌 경우에만 debounce 적용 (시간 단축: 500ms → 300ms)
       // 기존 타이머 취소
       if (transcriptDebounceTimerRef.current) {
         clearTimeout(transcriptDebounceTimerRef.current);
         transcriptDebounceTimerRef.current = null;
       }
       
-      // 0.5초 후 처리 (일반 텍스트는 짧은 debounce)
+      // 0.3초 후 처리 (일반 텍스트는 짧은 debounce)
       transcriptDebounceTimerRef.current = setTimeout(() => {
         console.log('[GlobalVoice] 일반 텍스트 처리:', finalText);
         lastBroadcastRef.current = { text: finalText, time: Date.now() };
@@ -382,7 +395,7 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
         onTranscript?.(finalText);
         
         transcriptDebounceTimerRef.current = null;
-      }, 500); // 일반 텍스트는 0.5초 debounce
+      }, 300); // 일반 텍스트는 0.3초 debounce
     };
     
     // TRANSCRIPT 이벤트는 최종 결과에만 발생 (emitTranscript 호출 시)
@@ -422,6 +435,11 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     if (isListening) {
       return;
     }
+
+    // 텍스트 선택 및 시스템 제스처 차단 (크롬 검색 등)
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
 
     // 활성 포인터 등록
     activePointerRef.current = {
@@ -483,10 +501,10 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     
     // 마우스를 누르고 있는데 음성 인식이 꺼진 경우 자동 재시작
     if (isLongPressing && !isListening && activePointerRef.current) {
-      // 최근에 명령어가 실행되었는지 확인
+      // 최근에 명령어가 실행되었는지 확인 (시간 단축: 2000ms → 1000ms)
       const timeSinceLastCommand = Date.now() - commandExecutedRef.current;
-      // 명령어 실행 후 2초 이내면 재시작하지 않음 (명령어 실행 후 자동 종료된 경우)
-      if (timeSinceLastCommand < 2000) {
+      // 명령어 실행 후 1초 이내면 재시작하지 않음 (명령어 실행 후 자동 종료된 경우)
+      if (timeSinceLastCommand < 1000) {
         console.log('[GlobalVoice] 최근 명령어 실행으로 인한 자동 종료 - 재시작하지 않음');
         return;
       }
@@ -497,11 +515,11 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
         const currentListening = useVoiceStore.getState().isListening;
         // 다시 한 번 명령어 실행 시간 확인
         const timeSinceLastCommand2 = Date.now() - commandExecutedRef.current;
-        if (isLongPressing && !currentListening && activePointerRef.current && timeSinceLastCommand2 >= 2000) {
+        if (isLongPressing && !currentListening && activePointerRef.current && timeSinceLastCommand2 >= 1000) {
           console.log('[GlobalVoice] 음성 인식이 자동 중단됨 - 재시작');
           micMode.requestStart();
         }
-      }, 800); // 충분한 딜레이
+      }, 400); // 딜레이 단축: 800ms → 400ms
       return () => clearTimeout(timer);
     }
   }, [isListening, isLongPressing, location.pathname]);
@@ -523,18 +541,50 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     }
   }, [isListening]);
 
-  // 전역 이벤트 리스너 등록
+  // 전역 이벤트 리스너 등록 - capture 단계에서 먼저 처리
   useEffect(() => {
-    window.addEventListener('pointerdown', handlePointerDown, { capture: false });
-    window.addEventListener('pointerup', handlePointerUp, { capture: false });
-    window.addEventListener('pointermove', handlePointerMove, { capture: false });
-    window.addEventListener('pointercancel', handlePointerCancel, { capture: false });
+    window.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: false });
+    window.addEventListener('pointerup', handlePointerUp, { capture: true, passive: false });
+    window.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
+    window.addEventListener('pointercancel', handlePointerCancel, { capture: true, passive: false });
+
+    // 텍스트 선택 방지를 위한 추가 이벤트
+    const handleSelectStart = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.closest('input') ||
+        target.closest('textarea')
+      ) {
+        return; // 입력 필드는 허용
+      }
+      e.preventDefault();
+    };
+
+    const handleContextMenu = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.closest('input') ||
+        target.closest('textarea')
+      ) {
+        return; // 입력 필드는 허용
+      }
+      e.preventDefault();
+    };
+
+    document.addEventListener('selectstart', handleSelectStart);
+    document.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
-      window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('pointerdown', handlePointerDown, { capture: true } as any);
+      window.removeEventListener('pointerup', handlePointerUp, { capture: true } as any);
+      window.removeEventListener('pointermove', handlePointerMove, { capture: true } as any);
+      window.removeEventListener('pointercancel', handlePointerCancel, { capture: true } as any);
+      document.removeEventListener('selectstart', handleSelectStart);
+      document.removeEventListener('contextmenu', handleContextMenu);
     };
   }, [handlePointerDown, handlePointerUp, handlePointerMove, handlePointerCancel]);
 
@@ -561,6 +611,7 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       className={`fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none transition-opacity duration-300 ${
         showAnimation || isListening ? 'opacity-100' : 'opacity-0'
       }`}
+      style={{ touchAction: 'none', userSelect: 'none' }}
       aria-hidden="true"
     >
       {/* 배경 오버레이 */}

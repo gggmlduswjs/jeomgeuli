@@ -20,7 +20,12 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-your-secret-key-her
 DEBUG = True
 
 # Allowed hosts (환경변수에서 로드)
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+# 개발 환경에서는 모든 호스트 허용 (ngrok 포함)
+if DEBUG:
+    ALLOWED_HOSTS = ['*']  # 개발 환경: 모든 호스트 허용
+else:
+    # 프로덕션 환경: 환경변수에서 로드
+    ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 APPEND_SLASH = True
 DEFAULT_CHARSET = "utf-8"

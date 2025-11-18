@@ -374,15 +374,15 @@ export default function LearnStep() {
 
   return (
     <AppShellMobile title={headerTitle} showBackButton onBack={handleBack}>
-      <div className="space-y-6 pb-24">
+      <div className="space-y-4 pb-20">
         {/* 음성 명령 표시줄 */}
-        <div className="mb-4">
+        <div className="mb-3">
           <SpeechBar isListening={isListening} transcript={transcript} />
         </div>
 
         {/* 진척도 바 */}
-        <div className="bg-white rounded-2xl p-4 shadow-toss">
-          <div className="flex justify-between text-sm text-muted mb-2">
+        <div className="bg-white rounded-2xl p-3 shadow-toss">
+          <div className="flex justify-between text-sm text-muted mb-1.5">
             <span>진척도</span>
             <span>{Math.round(((idx + 1) / items.length) * 100)}%</span>
           </div>
@@ -395,9 +395,9 @@ export default function LearnStep() {
         </div>
 
         {/* 안내 카드 */}
-        <div className="bg-white rounded-2xl p-6 shadow-toss">
-          <div className="text-sm text-primary font-medium mb-2">💡 학습 안내</div>
-          <div className="text-lg leading-relaxed">
+        <div className="bg-white rounded-2xl p-3 shadow-toss">
+          <div className="text-sm text-primary font-medium mb-1.5">💡 학습 안내</div>
+          <div className="text-base leading-relaxed">
             {current?.decomposeTTS && Array.isArray(current.decomposeTTS)
               ? current.decomposeTTS.join(" ")
               : current?.ttsIntro
@@ -407,37 +407,37 @@ export default function LearnStep() {
               : current?.tts || heading}
           </div>
           {!!current?.examples?.length && (
-            <div className="text-sm text-muted mt-3 p-3 bg-card rounded-xl">
+            <div className="text-sm text-muted mt-2 p-2.5 bg-card rounded-xl">
               <strong>예시:</strong> {current.examples.join(", ")}
             </div>
           )}
         </div>
 
         {/* 점자 표시 카드 */}
-        <div className="bg-white rounded-2xl p-8 text-center shadow-toss">
-          <div className="text-4xl font-bold text-fg mb-6">{heading}</div>
+        <div className="bg-white rounded-2xl p-5 text-center shadow-toss">
+          <div className="text-3xl font-bold text-fg mb-3">{heading}</div>
           <div className="inline-flex flex-wrap justify-center gap-3">
             {cells.length ? (
               cells.map((c, idx) => <CellView key={idx} c={c} />)
             ) : (
-              <div className="text-muted text-sm py-8">
+              <div className="text-muted text-sm py-6">
                 점자 데이터를 불러오는 중...
               </div>
             )}
           </div>
           {cells.length > 0 && (
-            <div className="text-xs text-muted mt-4">{cells.length}개 점자 셀로 구성</div>
+            <div className="text-xs text-muted mt-3">{cells.length}개 점자 셀로 구성</div>
           )}
         </div>
 
         {/* 하단 액션 바 (고정 위치, 네비게이션 바 위) */}
         <div className="fixed bottom-24 left-0 right-0 z-40 bg-white/98 backdrop-blur-xl border-t border-border/60 shadow-lg">
-          <div className="max-w-md mx-auto px-4 py-3">
+          <div className="w-full md:max-w-md md:mx-auto px-4 py-2">
             <div className="flex items-center justify-between gap-2">
               <button
                 onClick={prev}
                 disabled={idx === 0}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-card text-fg hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95 flex-1"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card text-fg hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95 flex-1"
                 aria-label="이전 항목"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -446,7 +446,7 @@ export default function LearnStep() {
 
               <button
                 onClick={repeat}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent transition-all duration-200 active:scale-95 flex-1"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent transition-all duration-200 active:scale-95 flex-1"
                 aria-label="다시 듣기"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -455,7 +455,7 @@ export default function LearnStep() {
 
               <button
                 onClick={onNext}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95 flex-1"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95 flex-1"
                 aria-label={idx === items.length - 1 ? "테스트 시작" : "다음 항목"}
               >
                 <span>{idx === items.length - 1 ? "테스트" : "다음"}</span>

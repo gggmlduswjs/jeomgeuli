@@ -463,8 +463,8 @@ export default function Quiz() {
     <div className="min-h-screen bg-bg text-fg flex flex-col">
       {/* 헤더 */}
       <header className="bg-white border-b border-border shadow-toss">
-        <div className="max-w-md mx-auto px-4">
-          <div className="flex items-center justify-between py-4">
+        <div className="w-full md:max-w-md md:mx-auto px-4">
+          <div className="flex items-center justify-between py-2.5">
             <button
               onClick={() => nav(-1)}
               className="p-3 rounded-2xl hover:bg-card focus:outline-none focus:ring-2 focus:ring-primary"
@@ -484,11 +484,11 @@ export default function Quiz() {
       </header>
 
       {/* 본문 */}
-      <main className="flex-1 p-4">
-        <div className="max-w-md mx-auto space-y-6">
+      <main className="flex-1 p-3">
+        <div className="w-full md:max-w-md md:mx-auto space-y-4">
           {/* 진행률 */}
-          <div className="bg-white rounded-2xl p-4 shadow-toss">
-            <div className="flex justify-between text-sm text-muted mb-2">
+          <div className="bg-white rounded-2xl p-3 shadow-toss">
+            <div className="flex justify-between text-sm text-muted mb-1.5">
               <span>진척도</span>
               <span>{progress}%</span>
             </div>
@@ -498,11 +498,11 @@ export default function Quiz() {
           </div>
 
           {/* 문제 카드 (문자 대신 점자 셀!) */}
-          <div className="bg-white rounded-2xl p-6 shadow-toss text-center">
+          <div className="bg-white rounded-2xl p-4 shadow-toss text-center">
             {/* 결과 배지: 독립 블록으로 중앙 정렬 → 셀을 밀지 않음 */}
             {result && (
-              <div className="mb-4 w-full flex justify-center">
-                <div className={`px-3 py-2 rounded-xl text-sm ${
+              <div className="mb-3 w-full flex justify-center">
+                <div className={`px-3 py-1.5 rounded-xl text-sm ${
                   result.ok ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
                 }`}>
                   {result.ok ? "정답입니다!" : `오답입니다. 정답: ${result.answer}`}
@@ -511,7 +511,7 @@ export default function Quiz() {
             )}
 
             {/* 문제: 항상 '점자 셀'을 가운데 노출 */}
-            <div className="mb-6 flex justify-center">
+            <div className="mb-4 flex justify-center">
               {cells.length ? (
                 <div className="inline-flex flex-wrap justify-center gap-3">
                   {cells.map((c, idx) => <CellView key={idx} c={c} />)}
@@ -521,21 +521,21 @@ export default function Quiz() {
               )}
             </div>
 
-            <label className="block text-sm text-muted mb-2">정답 입력(예: "디귿")</label>
+            <label className="block text-sm text-muted mb-1.5">정답 입력(예: "디귿")</label>
             <input
               ref={inputRef}
               value={user}
               onChange={(e) => setUser(e.target.value)}
               onKeyDown={onKeyDown}
               placeholder="정확히 입력하세요"
-              className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary"
               autoFocus
             />
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-3">
               <button
                 onClick={speakPrompt}
-                className="flex-1 px-4 py-3 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="flex-1 px-4 py-2 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 <RotateCcw className="inline w-4 h-4 mr-1" /> 다시 듣기
               </button>
@@ -545,7 +545,7 @@ export default function Quiz() {
               <button
                 onClick={() => onSubmit()}
                 disabled={!user.trim().length}
-                className="flex-1 px-4 py-3 rounded-2xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="flex-1 px-4 py-2 rounded-2xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 제출
               </button>

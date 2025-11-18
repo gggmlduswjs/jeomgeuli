@@ -6,10 +6,17 @@ import "./index.css";
 
 const containerId = "root";
 let container = document.getElementById(containerId);
+
+// 컨테이너가 없으면 생성 (안전하게)
 if (!container) {
   container = document.createElement("div");
   container.id = containerId;
-  document.body.appendChild(container);
+  // 중복 체크 후 추가
+  if (!document.getElementById(containerId)) {
+    document.body.appendChild(container);
+  } else {
+    container = document.getElementById(containerId)!;
+  }
 }
 
 const Fallback = () => <div style={{ padding:16 }}>로딩 중...</div>;
@@ -22,15 +29,27 @@ const Fallback = () => <div style={{ padding:16 }}>로딩 중...</div>;
   appMounted: false
 };
 
-ReactDOM.createRoot(container).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <Suspense fallback={<Fallback />}>
-        <App />
-      </Suspense>
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+// 기존 root가 있으면 unmount 후 재생성 (안전하게)
+let root: ReactDOM.Root;
+try {
+  // container가 유효한지 확인
+  if (container && container.parentNode) {
+    root = ReactDOM.createRoot(container);
+    root.render(
+      <React.StrictMode>
+        <ErrorBoundary>
+          <Suspense fallback={<Fallback />}>
+            <App />
+          </Suspense>
+        </ErrorBoundary>
+      </React.StrictMode>
+    );
+  } else {
+    console.error("Container is not attached to DOM");
+  }
+} catch (error) {
+  console.error("Failed to render app:", error);
+}
 
 // Service worker disabled for development
 // if ("serviceWorker" in navigator) {

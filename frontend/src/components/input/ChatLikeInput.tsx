@@ -159,7 +159,7 @@ export default function ChatLikeInput({
             inputMode="text"
             enterKeyHint="send"
             className="
-              w-full px-4 py-3 rounded-2xl border border-border
+              w-full px-4 py-2.5 rounded-2xl border border-border
               bg-bg text-fg placeholder:text-muted
               focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
               disabled:opacity-50 disabled:cursor-not-allowed

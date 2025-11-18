@@ -692,8 +692,8 @@ export default function Explore() {
     <div className="flex flex-col min-h-screen bg-bg text-fg">
       {/* 헤더는 AppShellMobile 없이 직접 구현 */}
       <div className="sticky top-0 z-50 bg-white/98 backdrop-blur-xl border-b border-border/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-        <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-between px-4 py-3.5">
+        <div className="w-full md:max-w-md md:mx-auto">
+          <div className="flex items-center justify-between px-4 py-2.5">
             <div className="w-11 flex items-center">
               <button
                 type="button"
@@ -737,8 +737,8 @@ export default function Explore() {
       />
 
       {/* 상단 컨트롤 바 */}
-      <div className="bg-white border-b border-border px-4 py-3">
-        <div className="max-w-md mx-auto flex flex-wrap items-center gap-2">
+      <div className="bg-white border-b border-border px-4 py-2">
+        <div className="w-full md:max-w-md md:mx-auto flex flex-wrap items-center gap-2">
           {/* BLE 연결 상태 */}
           <button
             onClick={async () => {
@@ -817,9 +817,9 @@ export default function Explore() {
       <div className="flex-1 overflow-hidden pb-24">
         <div 
           ref={listRef}
-          className="h-full overflow-y-auto px-4 py-6"
+          className="h-full overflow-y-auto px-4 py-4"
         >
-          <div className="max-w-md mx-auto space-y-6">
+          <div className="w-full md:max-w-md md:mx-auto space-y-6">
             {/* 정보탐색 결과 */}
             {exploreData && (
               <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
@@ -891,7 +891,7 @@ export default function Explore() {
               if (m.role === 'user') {
                 return (
                   <div key={m.id} className="flex justify-end">
-                    <div className="bg-blue-600 text-white rounded-xl px-4 py-3 max-w-[80%] shadow-md">
+                    <div className="bg-blue-600 text-white rounded-xl px-4 py-2 max-w-[80%] shadow-md">
                       <p className="text-sm leading-relaxed">{m.text}</p>
                     </div>
                   </div>
@@ -917,7 +917,7 @@ export default function Explore() {
 
       {/* 하단 입력 영역 (고정 위치, 네비게이션 바 위) */}
       <div className="fixed bottom-24 left-0 right-0 z-40 bg-white/98 backdrop-blur-xl border-t border-border/60 shadow-lg">
-        <div className="max-w-md mx-auto px-4 py-3">
+        <div className="w-full md:max-w-md md:mx-auto px-4 py-2">
           <ChatLikeInput
             onSubmit={handleSubmit}
             disabled={isLoading}
@@ -932,7 +932,7 @@ export default function Explore() {
         role="navigation" 
         aria-label="메인 네비게이션"
       >
-        <div className="max-w-md mx-auto px-3 py-3">
+        <div className="w-full md:max-w-md md:mx-auto px-3 py-2">
           <div className="flex items-center justify-around gap-1">
             <NavButton
               icon={Home}

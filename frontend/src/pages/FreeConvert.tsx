@@ -340,21 +340,21 @@ export default function FreeConvert() {
 
   return (
     <AppShellMobile title="자유 변환" showBackButton onBack={handleBack}>
-      <div className="space-y-6 pb-8">
+      <div className="space-y-4 pb-6">
         {/* 음성 명령 표시줄 */}
-        <div className="mb-4">
+        <div className="mb-3">
           <SpeechBar isListening={isListening} transcript={transcript} />
         </div>
 
         {/* 입력 영역 */}
         <div className="card">
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">변환할 텍스트</label>
+          <div className="mb-3">
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">변환할 텍스트</label>
             <textarea
               ref={inputRef}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              className="w-full p-3 border rounded-xl resize-none"
+              className="w-full p-2.5 border rounded-xl resize-none"
               rows={3}
               placeholder="한글 텍스트를 입력하거나 음성으로 말하세요"
             />
@@ -375,16 +375,16 @@ export default function FreeConvert() {
 
         {/* 변환 결과 */}
         {conversion && conversion.original && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {/* 전체 결과 */}
             <div className="card">
-              <div className="text-sm font-semibold text-gray-700 mb-3">전체 변환 결과</div>
-              <div className="space-y-3">
+              <div className="text-sm font-semibold text-gray-700 mb-2">전체 변환 결과</div>
+              <div className="space-y-2">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-800 mb-2">{conversion.original}</div>
+                  <div className="text-2xl font-bold text-gray-800 mb-1.5">{conversion.original}</div>
 
                   {/* 간단 텍스트 비주얼 (●/○) */}
-                  <div className="text-3xl font-mono text-blue-600 mb-3">
+                  <div className="text-3xl font-mono text-blue-600 mb-2">
                     {conversion.cells
                       .map((cell) => cell.map((d) => (d ? "●" : "○")).join(""))
                       .join(" ")}
@@ -422,7 +422,7 @@ export default function FreeConvert() {
             {/* 세그먼트별 결과(옵션) */}
             {!!conversion.segments?.length && (
               <div className="card">
-                <div className="text-sm font-semibold text-gray-700 mb-3">단어별 변환</div>
+                <div className="text-sm font-semibold text-gray-700 mb-2">단어별 변환</div>
                 <div className="space-y-3">
                   {conversion.segments.map((segment, index) => (
                     <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -432,7 +432,7 @@ export default function FreeConvert() {
                       </div>
                       <button
                         onClick={() => speak(`${segment.original} 변환 결과가 준비되었습니다.`)}
-                        className="flex items-center gap-2 bg-white hover:bg-gray-100 px-3 py-2 rounded-lg border transition-colors"
+                        className="flex items-center gap-2 bg-white hover:bg-gray-100 px-3 py-1.5 rounded-lg border transition-colors"
                       >
                         <div className="flex gap-1">
                           {segment.cells.map((cell, idx) => (

@@ -23,17 +23,17 @@ backend_dir = script_dir.parent
 frontend_dir = backend_dir.parent / "frontend"
 os.chdir(backend_dir)
 
-def build_react_app():
-    """React 앱 빌드 (또는 기존 빌드 확인)"""
-    print("1️⃣ React 앱 빌드 확인 중...")
-    
-    # 기존 빌드 파일 확인
-    dist_dir = frontend_dir / "dist"
-    if dist_dir.exists() and (dist_dir / "index.html").exists():
-        print("✅ 기존 React 빌드 파일 발견!")
-        return True
-    
+def build_react_app(force_rebuild=False):
+    """React 앱 빌드"""
     print("📦 React 빌드 실행 중...")
+    
+    # 기존 빌드 파일 확인 (force_rebuild가 False일 때만)
+    if not force_rebuild:
+        dist_dir = frontend_dir / "dist"
+        if dist_dir.exists() and (dist_dir / "index.html").exists():
+            print("⚠️  기존 React 빌드 파일 발견! (환경변수 변경 시 재빌드 필요)")
+            print("💡 환경변수가 변경되었다면 dist 폴더를 삭제하고 다시 실행하세요.")
+    
     try:
         # npx를 사용하여 더 안전하게 실행
         npx_cmd = "npx"
@@ -106,18 +106,13 @@ def main():
     print(f"📁 프론트엔드 디렉토리: {frontend_dir}")
     
     try:
-        # 1️⃣ React 앱 빌드 확인
-        if not build_react_app():
-            print("⚠️  React 빌드 파일이 없습니다. 기존 빌드 파일을 사용합니다.")
-            # 빌드 실패해도 계속 진행 (기존 빌드 파일이 있을 수 있음)
-        
-        # 2️⃣ Django 서버 실행
-        print("\n2️⃣ Django 서버 시작 중...")
+        # 1️⃣ Django 서버 실행
+        print("\n1️⃣ Django 서버 시작 중...")
         django = subprocess.Popen([sys.executable, "manage.py", "runserver", "8000"])
         time.sleep(3)  # 서버 시작 대기
         
-        # 3️⃣ ngrok 실행
-        print("3️⃣ ngrok 터널 생성 중...")
+        # 2️⃣ ngrok 실행
+        print("2️⃣ ngrok 터널 생성 중...")
         ngrok = subprocess.Popen(
             ["ngrok", "http", "8000", "--log=stdout"],
             stdout=subprocess.PIPE,
@@ -125,8 +120,8 @@ def main():
         )
         time.sleep(5)  # ngrok 초기화 대기
         
-        # 4️⃣ ngrok URL 감지
-        print("4️⃣ ngrok URL 감지 중...")
+        # 3️⃣ ngrok URL 감지
+        print("3️⃣ ngrok URL 감지 중...")
         url = get_ngrok_url()
         
         if not url:
@@ -136,15 +131,22 @@ def main():
         
         print(f"✅ ngrok URL 감지: {url}")
         
-        # 5️⃣ React 환경변수 업데이트
+        # 4️⃣ React 환경변수 업데이트 (빌드 전에!)
+        print("4️⃣ React 환경변수 업데이트 중...")
         update_frontend_env(url)
         
+        # 5️⃣ React 앱 빌드 (환경변수 반영된 상태로)
+        print("\n5️⃣ React 앱 빌드 중 (환경변수 반영)...")
+        if not build_react_app(force_rebuild=True):
+            print("⚠️  React 빌드 실패했지만 계속 진행합니다.")
+            print("💡 수동으로 빌드해주세요: cd frontend && npm run build")
+        
         # 6️⃣ Django ALLOWED_HOSTS 안내
-        print("✅ Django ALLOWED_HOSTS가 ngrok 도메인을 자동 허용합니다!")
+        print("\n✅ Django ALLOWED_HOSTS가 ngrok 도메인을 자동 허용합니다!")
         print("   (.ngrok-free.app, .ngrok.io 패턴 허용)")
         
         # 7️⃣ QR 코드 출력
-        print("\n5️⃣ QR 코드 생성 중...")
+        print("\n6️⃣ QR 코드 생성 중...")
         try:
             qr = qrcode.QRCode(border=1)
             qr.add_data(url)
@@ -156,6 +158,8 @@ def main():
             print(f"🔗 수동 접속: {url}")
         
         # 8️⃣ 테스트 안내
+        print("\n⚠️  중요: 환경변수가 변경되었으므로 React 앱이 재빌드되었습니다.")
+        print("   이제 ngrok URL로 API 호출이 정상적으로 작동합니다!")
         print("\n" + "="*60)
         print("🎉 React + Django + ngrok 완전 자동화 완료!")
         print("="*60)

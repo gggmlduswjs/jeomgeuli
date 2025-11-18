@@ -181,12 +181,12 @@ export default function Home() {
   return (
     <AppShellMobile title="점글이" className="relative">
       {/* 음성 명령 표시줄 */}
-      <div className="mb-8">
+      <div className="mb-4">
         <SpeechBar isListening={isListening} transcript={transcript} />
       </div>
 
       {/* 원형 메뉴 인터페이스 */}
-      <div className="flex justify-center items-center my-12 md:my-16 px-4">
+      <div className="flex justify-center items-center my-6 md:my-8 px-4">
         <div className="relative w-[320px] h-[320px] md:w-[360px] md:h-[360px] rounded-full bg-gradient-to-br from-primary/5 via-accent/5 to-sky/5 border-2 border-primary/20 shadow-2xl flex items-center justify-center backdrop-blur-sm">
           {/* 중앙 로고 버튼: 길게 눌러 음성 인식 시작 */}
           <button
@@ -204,7 +204,7 @@ export default function Home() {
             }`}
             aria-label="음성 인식 시작"
           >
-            <div className="flex flex-col items-center justify-center px-3 py-2 md:px-4">
+            <div className="flex flex-col items-center justify-center px-3 py-1.5 md:px-4">
               <span 
                 className="text-5xl md:text-6xl font-bold mb-1 md:mb-2 leading-none select-none" 
                 style={{ fontFamily: 'monospace', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}
@@ -236,8 +236,8 @@ export default function Home() {
       </div>
 
       {/* 안내 메시지 */}
-      <div className="mt-12 text-center">
-        <p className="text-sm text-muted mb-4">
+      <div className="mt-6 text-center">
+        <p className="text-sm text-muted mb-3">
           중앙 로고를 길게 눌러 음성 명령을 사용하세요
         </p>
         <button

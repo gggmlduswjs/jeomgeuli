@@ -359,31 +359,31 @@ export default function Review() {
     return (
       <AppShellMobile title="복습" showBackButton onBack={handleBack}>
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="max-w-md mx-auto text-center space-y-6">
-            <div className="bg-white rounded-2xl p-8 shadow-toss">
-              <div className="text-6xl mb-4">📚</div>
-              <h2 className="text-xl font-semibold text-fg mb-2">
+          <div className="w-full md:max-w-md md:mx-auto text-center space-y-4">
+            <div className="bg-white rounded-2xl p-6 shadow-toss">
+              <div className="text-6xl mb-3">📚</div>
+              <h2 className="text-xl font-semibold text-fg mb-1.5">
                 오늘은 복습할 항목이 없습니다
               </h2>
-              <p className="text-muted mb-6">
+              <p className="text-muted mb-4">
                 퀴즈에서 틀린 문제나 정보탐색에서 저장한 키워드가 복습 목록에 추가됩니다.
               </p>
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <button
                   onClick={() => navigate('/learn')}
-                  className="w-full px-4 py-3 rounded-2xl bg-primary text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95"
+                  className="w-full px-4 py-2 rounded-2xl bg-primary text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95"
                 >
                   학습하기로 이동
                 </button>
                 <button
                   onClick={() => navigate('/explore')}
-                  className="w-full px-4 py-3 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent transition-all duration-200 active:scale-95"
+                  className="w-full px-4 py-2 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent transition-all duration-200 active:scale-95"
                 >
                   정보탐색으로 이동
                 </button>
                 <button
                   onClick={() => navigate('/')}
-                  className="w-full px-4 py-3 rounded-2xl bg-card text-fg border border-border hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95"
+                  className="w-full px-4 py-2 rounded-2xl bg-card text-fg border border-border hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95"
                 >
                   홈으로 돌아가기
                 </button>
@@ -401,10 +401,10 @@ export default function Review() {
 
   return (
     <AppShellMobile title={titleWithProgress} showBackButton onBack={handleBack}>
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* 진행률 */}
-        <div className="bg-white rounded-2xl p-4 shadow-toss">
-          <div className="flex justify-between text-sm text-muted mb-2">
+        <div className="bg-white rounded-2xl p-3 shadow-toss">
+          <div className="flex justify-between text-sm text-muted mb-1.5">
             <span>진척도</span>
             <span>{progress}%</span>
           </div>
@@ -417,11 +417,11 @@ export default function Review() {
         </div>
 
         {/* 문제 카드 */}
-        <div className="bg-white rounded-2xl p-6 shadow-toss text-center">
+        <div className="bg-white rounded-2xl p-4 shadow-toss text-center">
           {/* 결과 배지 */}
           {result && (
-            <div className="mb-4 w-full flex justify-center">
-              <div className={`px-3 py-2 rounded-xl text-sm ${
+            <div className="mb-3 w-full flex justify-center">
+              <div className={`px-3 py-1.5 rounded-xl text-sm ${
                 result.ok ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
               }`}>
                 {result.ok ? (
@@ -434,7 +434,7 @@ export default function Review() {
           )}
 
           {/* 점자 셀 표출 */}
-          <div className="mb-6 flex justify-center">
+          <div className="mb-4 flex justify-center">
             {cellsLoading ? (
               <div className="text-muted text-sm py-8">
                 <div className="animate-pulse">점자 변환 중...</div>
@@ -458,28 +458,28 @@ export default function Review() {
 
           {/* 답 표시 또는 입력 */}
           {showAnswer ? (
-            <div className="text-2xl font-bold text-green-600 mb-4">
+            <div className="text-2xl font-bold text-green-600 mb-3">
               {p?.expected?.trim() || p?.content?.trim() || p?.text?.trim() || "정답 없음"}
             </div>
           ) : (
             <>
-              <label className="block text-sm text-muted mb-2">정답 입력</label>
+              <label className="block text-sm text-muted mb-1.5">정답 입력</label>
               <input
                 ref={inputRef}
                 value={userAnswer}
                 onChange={(e) => setUserAnswer(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder="정확히 입력하세요"
-                className="w-full px-4 py-3 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
               />
             </>
           )}
 
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2 mt-3">
             <button
               onClick={showAnswerNow}
-              className="flex-1 px-4 py-3 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent transition-all duration-200 active:scale-95"
+              className="flex-1 px-4 py-2 rounded-2xl bg-accent text-white hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent transition-all duration-200 active:scale-95"
             >
               <RotateCcw className="inline w-4 h-4 mr-1" /> 답 보기
             </button>
@@ -487,7 +487,7 @@ export default function Review() {
             {/* 음성 입력 토글 */}
             <button
               onClick={isListening ? stopSTT : startSTT}
-              className={`px-4 py-3 rounded-2xl ${isListening ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95`}
+              className={`px-4 py-2 rounded-2xl ${isListening ? "bg-danger text-white" : "bg-card text-fg"} hover:bg-border focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95`}
               aria-pressed={isListening}
               title="음성으로 정답 말하기"
             >
@@ -497,7 +497,7 @@ export default function Review() {
             <button
               onClick={() => onSubmit()}
               disabled={!userAnswer.trim().length}
-              className="flex-1 px-4 py-3 rounded-2xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95"
+              className="flex-1 px-4 py-2 rounded-2xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-200 active:scale-95"
             >
               제출
             </button>

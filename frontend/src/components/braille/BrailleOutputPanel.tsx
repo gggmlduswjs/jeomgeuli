@@ -13,9 +13,9 @@ export function BrailleOutputPanel({
 
   return (
     <div className={`bg-white border-b border-gray-200 shadow-sm ${className}`}>
-      <div className="max-w-4xl mx-auto px-4 py-4">
+      <div className="max-w-4xl mx-auto px-4 py-3">
         {/* 헤더 */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">⠠⠃</span>
@@ -53,7 +53,7 @@ export function BrailleOutputPanel({
 
         {/* 추가 정보 */}
         {hasBraille && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-2 pt-2 border-t border-gray-100">
             <p className="text-xs text-gray-500">
               💡 키워드를 점자 디스플레이로 전송하여 시각적 학습을 도와드립니다
             </p>

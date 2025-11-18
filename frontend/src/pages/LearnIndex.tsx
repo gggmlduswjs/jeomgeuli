@@ -126,23 +126,23 @@ export default function LearnIndex() {
 
   return (
     <AppShellMobile title="점자 학습" showBackButton onBack={handleBack}>
-      <div className="space-y-6 pb-8">
+      <div className="space-y-4 pb-6">
         {/* 음성 명령 표시줄 */}
-        <div className="mb-4">
+        <div className="mb-3">
           <SpeechBar isListening={isListening} transcript={transcript} />
         </div>
 
         <nav
-          className="max-w-[560px] mx-auto space-y-3"
+          className="w-full md:max-w-[560px] md:mx-auto space-y-2"
           aria-label="학습 카테고리"
         >
-          <h2 className="text-xl font-bold mb-4">점자 학습</h2>
+          <h2 className="text-lg font-bold mb-2">점자 학습</h2>
 
         {items.map(({ to, label, desc, highlight, command }) => (
           <div
             key={to}
             className={[
-              "block rounded-2xl bg-white px-5 py-4 border shadow transition-colors",
+              "block rounded-2xl bg-white px-5 py-2 border shadow transition-colors",
               highlight ? "border-sky-200 text-sky-700" : "border-border text-fg",
               "pointer-events-none", // 터치 이벤트 차단
             ].join(" ")}
@@ -150,9 +150,9 @@ export default function LearnIndex() {
             role="button"
             tabIndex={-1}
           >
-            <div className="font-semibold">{label}</div>
+            <div className="font-semibold text-base">{label}</div>
             <div className="text-sm text-secondary mt-0.5">{desc}</div>
-            <div className="text-xs text-muted mt-2">💬 "{command}"라고 말하세요</div>
+            <div className="text-xs text-muted mt-1.5">💬 "{command}"라고 말하세요</div>
           </div>
         ))}
         </nav>

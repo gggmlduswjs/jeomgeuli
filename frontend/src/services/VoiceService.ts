@@ -539,6 +539,12 @@ class VoiceServiceClass {
    * STT 시작
    */
   async startSTT(options?: StartSTTOptions): Promise<void> {
+    // 이미 리스닝 중이면 무시 (중복 시작 방지)
+    if (this.sttProvider?.isListening()) {
+      console.log('[VoiceService] 이미 리스닝 중 - 무시');
+      return;
+    }
+    
     if (!this.isInitialized) {
       this.init();
     }
@@ -590,6 +596,12 @@ class VoiceServiceClass {
    * STT 중지
    */
   stopSTT(): void {
+    // 이미 중지되었으면 무시 (중복 중지 방지)
+    if (!this.sttProvider?.isListening()) {
+      console.log('[VoiceService] 이미 중지됨 - 무시');
+      return;
+    }
+    
     if (this.sttProvider) {
       this.sttProvider.stop();
     }

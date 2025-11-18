@@ -131,8 +131,8 @@ export default function AppShellMobile({
     <div className={`min-h-screen bg-bg text-fg flex flex-col ${className}`}>
       {/* 상단 헤더 - 모던 스타일 */}
       <header className="sticky top-0 z-50 bg-white/98 backdrop-blur-xl border-b border-border/50 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-        <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-between px-4 py-3.5">
+        <div className="w-full md:max-w-md md:mx-auto">
+          <div className="flex items-center justify-between px-4 py-2.5">
             {/* 왼쪽: 뒤로가기 버튼 또는 빈 공간 */}
             <div className="w-11 flex items-center">
               {showBackButton && (
@@ -178,7 +178,7 @@ export default function AppShellMobile({
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 overflow-y-auto bg-bg">
-        <div className="max-w-md mx-auto px-4 py-6">{children}</div>
+        <div className="w-full md:max-w-md md:mx-auto px-4 py-3">{children}</div>
       </main>
 
       {/* 하단 탭 네비게이션 - 모던 스타일 */}
@@ -187,7 +187,7 @@ export default function AppShellMobile({
         role="navigation" 
         aria-label="메인 네비게이션"
       >
-        <div className="max-w-md mx-auto px-3 py-3">
+        <div className="w-full md:max-w-md md:mx-auto px-3 py-2">
           <div className="flex items-center justify-around gap-1">
             <NavButton
               icon={Home}
