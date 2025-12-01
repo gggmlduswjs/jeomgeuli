@@ -56,6 +56,7 @@
 - BLE 점자 디스플레이와 연동 가능
 - 상용 제품 사용: [하드웨어 연동 가이드](./docs/HARDWARE_INTEGRATION.md)
 - 직접 제작: [Arduino 펌웨어 개발 가이드](./docs/ARDUINO_FIRMWARE.md)
+- **점글이 표준 하드웨어**: [하드웨어 스펙](./docs/HARDWARE_SPEC.md)
 
 ### 1. 저장소 클론
 \`\`\`bash
@@ -93,6 +94,69 @@ npm run dev
 ### 4. 접속
 - 프론트엔드: http://localhost:3000
 - 백엔드 API: http://localhost:8000
+
+### 5. 하드웨어 연동 (점자 디스플레이)
+
+#### 방법 A: Web Serial API 사용 (권장 - Raspberry Pi 불필요)
+
+**필요한 하드웨어:**
+- Arduino UNO
+- JY-SOFT 스마트 점자 모듈
+- 5핀 케이블
+- 5V, 2A 이상 전원 어댑터
+
+**실행 순서:**
+
+1. **Arduino 펌웨어 업로드**
+   ```bash
+   # Arduino IDE에서 arduino/braille_firmware/braille_firmware.ino 업로드
+   # 자세한 내용: arduino/README.md
+   ```
+
+2. **백엔드 및 프론트엔드 실행** (위의 2, 3단계 참조)
+
+3. **브라우저에서 Serial 연결**
+   - http://localhost:3000 접속
+   - 정보탐색 페이지에서 "Arduino 연결" 버튼 클릭
+   - Serial 포트 선택 (COM3 등)
+   - 점자 출력 테스트
+
+**주의사항:**
+- Chrome 또는 Edge 브라우저 사용 (Web Serial API 지원)
+- HTTPS 환경에서만 동작 (localhost는 예외)
+
+#### 방법 B: Raspberry Pi BLE 서버 사용 (원래 설계)
+
+**필요한 하드웨어:**
+- Raspberry Pi 4 (BLE 지원)
+- Arduino UNO
+- JY-SOFT 스마트 점자 모듈
+- 5핀 케이블
+- 5V, 2A 이상 전원 어댑터
+
+**실행 순서:**
+
+1. **Arduino 펌웨어 업로드** (방법 A와 동일)
+
+2. **Raspberry Pi BLE 서버 실행**
+   ```bash
+   # Raspberry Pi에서
+   cd raspberrypi
+   sudo python3 ble_server.py
+   # 자세한 내용: raspberrypi/README.md
+   ```
+
+3. **백엔드 및 프론트엔드 실행** (위의 2, 3단계 참조)
+
+4. **브라우저에서 BLE 연결**
+   - http://localhost:3000 접속
+   - 정보탐색 페이지에서 "Jeomgeuli" 디바이스 연결
+   - 점자 출력 테스트
+
+#### 상세 가이드
+- [하드웨어 스펙](./docs/HARDWARE_SPEC.md): 전체 하드웨어 스펙 및 아키텍처
+- [Raspberry Pi 가이드](./raspberrypi/README.md): BLE 서버 설치 및 실행
+- [Arduino 가이드](./arduino/README.md): 펌웨어 업로드 및 하드웨어 연결
 
 ## API 엔드포인트
 
@@ -154,19 +218,39 @@ jeomgeuli/
 │   │   ├── services/      # API 서비스
 │   │   └── store/         # 상태 관리
 │   └── package.json
+├── raspberrypi/            # Raspberry Pi BLE 서버
+│   ├── ble_server.py      # BLE → Serial Bridge
+│   └── README.md
+├── arduino/                # Arduino 펌웨어
+│   ├── braille_firmware.ino # 점자 모듈 제어
+│   └── README.md
 └── README.md
 \`\`\`
 
 ### 환경 변수
+
+#### Backend (.env)
 \`\`\`env
-# Backend (.env)
+# backend/.env 또는 backend/jeomgeuli_backend/.env
 GEMINI_API_KEY=your_gemini_api_key_here
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1,8000
-
-# Frontend (.env)
-VITE_API_URL=http://localhost:8000/api
 \`\`\`
+
+#### Frontend (.env.local)
+\`\`\`env
+# frontend/.env.local (로컬 개발용)
+# Vite proxy를 사용하므로 /api로 설정 (vite.config.ts의 proxy 사용)
+VITE_API_BASE_URL=/api
+
+# 주의: ngrok URL을 사용하지 마세요. 로컬 개발 시에는 /api를 사용합니다.
+# Vite의 proxy 설정이 자동으로 http://localhost:8000으로 프록시합니다.
+\`\`\`
+
+**중요**: 
+- 로컬 개발 시 `VITE_API_BASE_URL`을 설정하지 않으면 자동으로 `/api`를 사용합니다.
+- `vite.config.ts`의 proxy 설정이 `/api`를 `http://localhost:8000`으로 자동 프록시합니다.
+- ngrok URL을 사용하려면 프로덕션 빌드 시에만 설정하세요.
 
 ## 라이선스
 

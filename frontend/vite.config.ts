@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: [], // 아이콘 파일이 없으면 빈 배열로 설정
       manifest: {
         name: '점글이 - 시각장애인 정보접근 PWA',
         short_name: '점글이',
@@ -21,18 +21,19 @@ export default defineConfig({
         scope: '/',
         start_url: '/',
         icons: [
-          {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any maskable'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
-          }
+          // 아이콘 파일이 없으면 빈 배열로 설정 (선택사항)
+          // {
+          //   src: 'pwa-192x192.png',
+          //   sizes: '192x192',
+          //   type: 'image/png',
+          //   purpose: 'any maskable'
+          // },
+          // {
+          //   src: 'pwa-512x512.png',
+          //   sizes: '512x512',
+          //   type: 'image/png',
+          //   purpose: 'any maskable'
+          // }
         ],
         categories: ['education', 'accessibility'],
         shortcuts: [
@@ -40,15 +41,15 @@ export default defineConfig({
             name: '정보 탐색',
             short_name: '탐색',
             description: '정보 탐색 페이지로 이동',
-            url: '/explore',
-            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+            url: '/explore'
+            // icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
           },
           {
             name: '점자 학습',
             short_name: '학습',
             description: '점자 학습 페이지로 이동',
-            url: '/learn',
-            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+            url: '/learn'
+            // icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
           }
         ]
       },

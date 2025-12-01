@@ -51,14 +51,17 @@ export default function Explore() {
 
   const { speak } = useTTS();
   const { stop: stopSTT } = useSTT();
-  const { isConnected, connect, disconnect } = useBrailleBLE();
   const [isTTSEnabled, setIsTTSEnabled] = useState(true);
+  
+  // Serial 사용 (Raspberry Pi 없이 Arduino 직접 연결)
   const braille = useBraillePlayback({
-    ble: {
-      serviceUUID: "0000180a-0000-1000-8000-00805f9b34fb",
-      characteristicUUID: "00002a00-0000-1000-8000-00805f9b34fb",
+    serial: {
+      baudRate: 115200,
     },
   });
+  
+  // 연결 상태 및 제어 함수
+  const { isConnected, connect, disconnect, deviceName, error } = braille;
 
   // 페이지 진입 시 이전 데이터 초기화
   useEffect(() => {
@@ -739,17 +742,20 @@ export default function Explore() {
       {/* 상단 컨트롤 바 */}
       <div className="bg-white border-b border-border px-4 py-2">
         <div className="w-full md:max-w-md md:mx-auto flex flex-wrap items-center gap-2">
-          {/* BLE 연결 상태 */}
+          {/* Serial 연결 상태 (Arduino 직접 연결) */}
           <button
             onClick={async () => {
               try {
                 if (isConnected) {
-                  disconnect();
+                  await disconnect();
                 } else {
                   await connect();
                 }
-              } catch (error) {
-                console.log("BLE 연결 처리:", error);
+              } catch (error: any) {
+                console.error("Serial 연결 처리:", error);
+                const errorMsg = error?.message || "연결에 실패했습니다.";
+                setToastMessage(errorMsg);
+                setShowToast(true);
               }
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 active:scale-95 ${
@@ -758,9 +764,15 @@ export default function Explore() {
                 : 'bg-card text-fg hover:bg-border border border-border'
             }`}
             aria-pressed={isConnected}
+            title={deviceName || (isConnected ? "Arduino 연결됨" : "Arduino Serial 연결")}
           >
-            {isConnected ? '🔗 연결됨' : '🔌 연결'}
+            {isConnected ? `🔗 ${deviceName || '연결됨'}` : '🔌 Arduino 연결'}
           </button>
+          {error && (
+            <span className="text-xs text-error" title={error}>
+              ⚠️
+            </span>
+          )}
 
           {/* 점자 출력 토글 */}
           <label className="flex items-center gap-2 cursor-pointer">

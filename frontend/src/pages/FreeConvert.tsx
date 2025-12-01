@@ -12,6 +12,7 @@ import VoiceService from "../services/VoiceService";
 import { normalizeCells } from "@/lib/brailleSafe";
 import { maskToGrid6 } from "@/lib/brailleGrid";
 import type { Cell } from "@/lib/brailleMap"; // [0|1,0|1,0|1,0|1,0|1,0|1]
+import { useBraillePlayback } from "../hooks/useBraillePlayback";
 
 // 간단한 유사도 계산 함수 (오인식 보정용)
 function calculateSimilarity(s1: string, s2: string): number {
@@ -97,6 +98,15 @@ export default function FreeConvert() {
   const [toastMessage, setToastMessage] = useState('');
   const lastConvertedTextRef = useRef<string>(''); // 마지막 변환한 텍스트 추적
   const isConvertingRef = useRef<boolean>(false); // 변환 중 플래그
+  
+  // Serial 사용 (Raspberry Pi 없이 Arduino 직접 연결)
+  const braille = useBraillePlayback({
+    serial: {
+      baudRate: 115200,
+    },
+  });
+  
+  const { isConnected, connect, disconnect, deviceName } = braille;
 
   // 페이지 진입 시 정답 목록 비우기 (자유변환 모드는 임의 텍스트 입력이므로 제어어 등록 불필요)
   useEffect(() => {
@@ -168,6 +178,11 @@ export default function FreeConvert() {
 
       setConversion(next);
       lastConvertedTextRef.current = text; // 마지막 변환한 텍스트 저장
+      
+      // 점자 출력 (활성화된 경우)
+      if (braille.enabled && text) {
+        braille.enqueueKeywords([text]);
+      }
       speak(`변환 완료. ${text}의 점자 변환이 완료되었습니다.`);
     } catch (e: any) {
       console.error("[FreeConvert] Conversion error:", e);
@@ -344,6 +359,40 @@ export default function FreeConvert() {
         {/* 음성 명령 표시줄 */}
         <div className="mb-3">
           <SpeechBar isListening={isListening} transcript={transcript} />
+        </div>
+
+        {/* Serial 연결 및 점자 출력 제어 */}
+        <div className="bg-white rounded-2xl p-3 shadow-toss flex items-center justify-between gap-2">
+          <button
+            onClick={async () => {
+              try {
+                if (isConnected) {
+                  await disconnect();
+                } else {
+                  await connect();
+                }
+              } catch (error: any) {
+                console.error("Serial 연결 처리:", error);
+              }
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              isConnected
+                ? 'bg-success text-white hover:bg-success/90'
+                : 'bg-card text-fg hover:bg-border border border-border'
+            }`}
+            title={deviceName || (isConnected ? "Arduino 연결됨" : "Arduino Serial 연결")}
+          >
+            {isConnected ? `🔗 ${deviceName || '연결됨'}` : '🔌 Arduino 연결'}
+          </button>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={braille.enabled}
+              onChange={(e) => braille.setEnabled(e.target.checked)}
+              className="w-4 h-4 text-primary rounded focus:ring-primary"
+            />
+            점자 출력
+          </label>
         </div>
 
         {/* 입력 영역 */}

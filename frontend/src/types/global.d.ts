@@ -45,6 +45,22 @@ declare global {
   interface BluetoothRemoteGATTCharacteristic {
     writeValue(data: Uint8Array): Promise<void>;
   }
+
+  // Serial API 타입 정의
+  interface Navigator {
+    serial?: {
+      requestPort(options?: { filters?: Array<{ usbVendorId?: number }> }): Promise<SerialPort>;
+      getPorts(): Promise<SerialPort[]>;
+    };
+  }
+
+  interface SerialPort {
+    readable: ReadableStream<Uint8Array> | null;
+    writable: WritableStream<Uint8Array> | null;
+    open(options: { baudRate: number }): Promise<void>;
+    close(): Promise<void>;
+    getInfo?(): { usbVendorId?: number; usbProductId?: number };
+  }
 }
 
 export {};

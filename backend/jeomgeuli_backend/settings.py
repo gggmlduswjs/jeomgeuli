@@ -120,7 +120,7 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS - 발표/시연용 설정 (모든 Origin 허용)
+# CORS - 개발 환경 설정 (모든 Origin 허용)
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
@@ -128,13 +128,13 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://6046306e1546.ngrok-free.app",  # 이전 ngrok 주소
-    "https://cdfeb8ae15f8.ngrok-free.app",  # 이전 ngrok 주소
-    "https://b0e8adaa2aac.ngrok-free.app",  # 현재 ngrok 주소
+    "http://127.0.0.1:5173",
 ] + ([os.getenv("API_BASE_URL", "").replace("/api", "")] if os.getenv("API_BASE_URL") else [])
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.ngrok-free\.app$",
     r"^https://.*\.ngrok\.io$",
+    r"^http://localhost:\d+$",  # localhost 모든 포트 허용
+    r"^http://127\.0\.0\.1:\d+$",  # 127.0.0.1 모든 포트 허용
 ]
 
 REST_FRAMEWORK = {

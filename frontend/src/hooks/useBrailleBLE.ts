@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect } from "react";
  * 지원하는 하드웨어:
  * - Orbit Reader 20
  * - Refreshable Braille Display (일반)
+ * - 점글이 표준 하드웨어 (Jeomgeuli)
  * - 기타 표준 BLE 점자 디스플레이
  */
 
@@ -26,11 +27,17 @@ const HARDWARE_CONFIGS = {
     serviceUUID: BRAILLE_SERVICE_UUID,
     charUUID: BRAILLE_CHAR_UUID,
     namePrefix: "Braille"
+  },
+  // 점글이 표준 하드웨어 (Raspberry Pi → Arduino → 점자 모듈)
+  jeomgeuli: {
+    serviceUUID: "12345678-1234-5678-1234-56789abcdef0",
+    charUUID: "abcdabcd-1234-5678-1111-abcdefabcdef",
+    namePrefix: "Jeomgeuli"
   }
 };
 
 export interface BrailleBLEConfig {
-  hardwareType?: 'orbit' | 'generic' | 'auto';
+  hardwareType?: 'orbit' | 'generic' | 'jeomgeuli' | 'auto';
   serviceUUID?: string;
   charUUID?: string;
   namePrefix?: string;

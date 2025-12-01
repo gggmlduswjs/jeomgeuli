@@ -85,6 +85,9 @@ export interface UseBraillePlaybackOptions {
     characteristicUUID: string;
     maxPacketSize?: number;
   } | null;
+  serial?: {
+    baudRate?: number;
+  } | null;
   delayMs?: number;
   previewMode?: 'local' | 'none';
   onEnd?: () => void;

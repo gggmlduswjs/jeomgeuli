@@ -17,6 +17,7 @@ import useVoiceCommands from '../hooks/useVoiceCommands';
 import { useVoiceStore } from '../store/voice';
 import SpeechBar from '../components/input/SpeechBar';
 import AppShellMobile from '../components/ui/AppShellMobile';
+import { useBraillePlayback } from '../hooks/useBraillePlayback';
 
 function Dot({ on }: { on: boolean }) {
   return (
@@ -69,6 +70,15 @@ export default function LearnStep() {
   const navigate = useNavigate();
   const { speak, stop } = useTTS();
   const { start: startSTT, stop: stopSTT, isListening, transcript } = useSTT();
+  
+  // Serial 사용 (Raspberry Pi 없이 Arduino 직접 연결)
+  const braille = useBraillePlayback({
+    serial: {
+      baudRate: 115200,
+    },
+  });
+  
+  const { isConnected, connect, disconnect, deviceName } = braille;
 
   // 경로(/learn/char|word|sentence) 우선, 없으면 ?mode=, 그래도 없으면 'char'
   const pathTail = pathname.split('/').pop() || '';
@@ -130,6 +140,15 @@ export default function LearnStep() {
 
   const heading = current?.word || current?.sentence || current?.char || current?.name || '';
   const key = `${mode}:${heading}`;
+
+  // 학습 항목이 변경될 때 점자 출력
+  useEffect(() => {
+    if (current && idx >= 0 && heading && braille.enabled) {
+      // 현재 학습 항목을 점자로 출력
+      braille.enqueueKeywords([heading]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, idx, heading, braille.enabled]);
 
   // 비동기 셀 계산 (항목별 캐싱 + 취소)
   const [computed, setComputed] = useState<CellTuple[]>([]);
@@ -411,6 +430,40 @@ export default function LearnStep() {
               <strong>예시:</strong> {current.examples.join(", ")}
             </div>
           )}
+        </div>
+
+        {/* Serial 연결 및 점자 출력 제어 */}
+        <div className="bg-white rounded-2xl p-3 shadow-toss flex items-center justify-between gap-2">
+          <button
+            onClick={async () => {
+              try {
+                if (isConnected) {
+                  await disconnect();
+                } else {
+                  await connect();
+                }
+              } catch (error: any) {
+                console.error("Serial 연결 처리:", error);
+              }
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              isConnected
+                ? 'bg-success text-white hover:bg-success/90'
+                : 'bg-card text-fg hover:bg-border border border-border'
+            }`}
+            title={deviceName || (isConnected ? "Arduino 연결됨" : "Arduino Serial 연결")}
+          >
+            {isConnected ? `🔗 ${deviceName || '연결됨'}` : '🔌 Arduino 연결'}
+          </button>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={braille.enabled}
+              onChange={(e) => braille.setEnabled(e.target.checked)}
+              className="w-4 h-4 text-primary rounded focus:ring-primary"
+            />
+            점자 출력
+          </label>
         </div>
 
         {/* 점자 표시 카드 */}

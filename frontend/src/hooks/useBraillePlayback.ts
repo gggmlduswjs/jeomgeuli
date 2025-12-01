@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import useBrailleBLE from "./useBrailleBLE";
+import useBrailleSerial from "./useBrailleSerial";
 import { localToBrailleCells } from "@/lib/braille";
 import type { UseBraillePlaybackOptions, DotArray } from "@/types";
 
@@ -10,10 +11,25 @@ export function useBraillePlayback(opts: UseBraillePlaybackOptions = {}) {
     onEnd,
     onBeforePlay,
     onAfterPlay,
+    ble,
+    serial,
   } = opts;
 
-  // BLE 훅
-  const { isConnected, writeText } = useBrailleBLE();
+  // Serial 또는 BLE 선택
+  const useSerial = serial !== null && (serial !== undefined || ble === null);
+  
+  // Serial 훅
+  const serialHook = useBrailleSerial(serial || {});
+  
+  // BLE 훅 - ble 옵션이 있으면 사용, 없으면 기본 설정
+  const bleConfig = ble ? {
+    serviceUUID: ble.serviceUUID,
+    charUUID: ble.characteristicUUID,
+  } : {};
+  const bleHook = useBrailleBLE(bleConfig);
+
+  // 사용할 훅 선택
+  const { isConnected, writeText } = useSerial ? serialHook : bleHook;
 
   // 상태
   const [enabled, setEnabled] = useState(false);
@@ -228,6 +244,13 @@ export function useBraillePlayback(opts: UseBraillePlaybackOptions = {}) {
     currentCells,
     status,
     demoMode,
+    isConnected,
+
+    // 연결 제어 (Serial 또는 BLE)
+    connect: useSerial ? serialHook.connect : bleHook.connect,
+    disconnect: useSerial ? serialHook.disconnect : bleHook.disconnect,
+    deviceName: useSerial ? serialHook.deviceName : undefined,
+    error: useSerial ? serialHook.error : undefined,
 
     // 제어
     enqueueKeywords,

@@ -11,6 +11,7 @@ import useTTS from '../hooks/useTTS';
 import useVoiceCommands from '../hooks/useVoiceCommands';
 import VoiceService from '../services/VoiceService';
 import { useVoiceStore } from '../store/voice';
+import { useBraillePlayback } from '../hooks/useBraillePlayback';
 
 // 🧩 유틸: 어떤 형태로 와도 6튜플로 변환
 function toTuple(x: any): Cell {
@@ -181,6 +182,15 @@ export default function Quiz() {
   const { pathname } = useLocation();
   const { speak, stop } = useTTS();
   
+  // Serial 사용 (Raspberry Pi 없이 Arduino 직접 연결)
+  const braille = useBraillePlayback({
+    serial: {
+      baudRate: 115200,
+    },
+  });
+  
+  const { isConnected, connect, disconnect, deviceName } = braille;
+  
   // 경로에서 mode 추출 (직접 진입 대비)
   const pathTail = pathname.split('/').pop() || '';
   const fromPath = (['char','word','sentence'] as LessonMode[]).includes(pathTail as any)
@@ -290,6 +300,17 @@ export default function Quiz() {
       }
     }
   }, [cur, i, speak, stop]);
+
+  // 문제가 변경될 때 점자 출력
+  useEffect(() => {
+    if (cur && i >= 0 && braille.enabled) {
+      const answer = answerText(cur).trim();
+      if (answer) {
+        braille.enqueueKeywords([answer]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur, i, braille.enabled]);
 
   // ✅ 문제 셀 계산: 아이템 데이터 ➜ (없으면) 변환 API ➜ (없으면) 로컬 폴백
   useEffect(() => {
@@ -486,6 +507,40 @@ export default function Quiz() {
       {/* 본문 */}
       <main className="flex-1 p-3">
         <div className="w-full md:max-w-md md:mx-auto space-y-4">
+          {/* Serial 연결 및 점자 출력 제어 */}
+          <div className="bg-white rounded-2xl p-3 shadow-toss flex items-center justify-between gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  if (isConnected) {
+                    await disconnect();
+                  } else {
+                    await connect();
+                  }
+                } catch (error: any) {
+                  console.error("Serial 연결 처리:", error);
+                }
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                isConnected
+                  ? 'bg-success text-white hover:bg-success/90'
+                  : 'bg-card text-fg hover:bg-border border border-border'
+              }`}
+              title={deviceName || (isConnected ? "Arduino 연결됨" : "Arduino Serial 연결")}
+            >
+              {isConnected ? `🔗 ${deviceName || '연결됨'}` : '🔌 Arduino 연결'}
+            </button>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={braille.enabled}
+                onChange={(e) => braille.setEnabled(e.target.checked)}
+                className="w-4 h-4 text-primary rounded focus:ring-primary"
+              />
+              점자 출력
+            </label>
+          </div>
+
           {/* 진행률 */}
           <div className="bg-white rounded-2xl p-3 shadow-toss">
             <div className="flex justify-between text-sm text-muted mb-1.5">
