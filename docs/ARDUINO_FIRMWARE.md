@@ -4,68 +4,255 @@
 
 점글이 프로젝트는 웹 애플리케이션으로, 하드웨어와 직접 통신하는 소프트웨어만 제공합니다. 실제 점자 디스플레이 하드웨어를 제어하려면 Arduino 펌웨어를 별도로 개발해야 합니다.
 
-## 역할 분담
+## 표준 하드웨어 구조 (3셀 버전)
+
+점글이 프로젝트의 표준 하드웨어는 다음 구조를 따릅니다:
 
 ```
 ┌─────────────────────────────────────┐
-│   점글이 프로젝트 (이 프로젝트)      │
-│   - 웹 애플리케이션                  │
-│   - 하드웨어와 통신하는 소프트웨어    │
-│   - 점자 데이터 전송                  │
+│   React PWA                         │
+│   - Web Bluetooth API               │
+│   - 점자 데이터 생성 및 전송         │
 └──────────────┬──────────────────────┘
-               │ BLE 통신
+               │ BLE (Bluetooth Low Energy)
+               │ Service: 12345678-1234-5678-1234-56789abcdef0
+               │ Characteristic: abcdabcd-1234-5678-1111-abcdefabcdef
                ▼
 ┌─────────────────────────────────────┐
-│   Arduino 펌웨어 (별도 개발 필요)     │
-│   - 하드웨어 제어                     │
-│   - 점자 핀 제어                      │
-│   - BLE 수신 및 처리                  │
+│   Raspberry Pi 4                    │
+│   - BLE 서버 (bluezero)              │
+│   - Serial Bridge                    │
+│   - USB Serial → Arduino             │
 └──────────────┬──────────────────────┘
-               │
+               │ USB Serial (115200 baud)
                ▼
 ┌─────────────────────────────────────┐
-│   점자 디스플레이 하드웨어            │
-│   - 솔레노이드/서보 모터              │
-│   - 점자 핀                           │
+│   Arduino UNO                        │
+│   - Serial 수신                      │
+│   - 점자 패턴 변환                    │
+│   - 3셀 버퍼 관리                     │
+│   - Shift Register 제어              │
+│   - GPIO: D2(DATA), D3(LATCH), D4(CLOCK) │
+└──────────────┬──────────────────────┘
+               │ GPIO (5핀 케이블)
+               │ VCC, GND, DATA, LATCH, CLOCK
+               ▼
+┌─────────────────────────────────────┐
+│   JY-SOFT 스마트 점자 모듈 × 3        │
+│   - 74HC595 Shift Register × 1 per cell │
+│   - L293D Motor Driver × 2 per cell     │
+│   - 5V 솔레노이드 × 6 per cell          │
+│   - 6-dot 점자 출력 × 3셀 (총 18-dot)    │
 └─────────────────────────────────────┘
 ```
 
+**중요**: 이 문서는 표준 3셀 버전 하드웨어 구조를 기준으로 작성되었습니다. 자세한 스펙은 [HARDWARE_SPEC.md](./HARDWARE_SPEC.md)를 참조하세요.
+
 ## 하드웨어 요구사항
 
-### 권장 보드
+### 표준 하드웨어 구성 (3셀 버전)
 
-1. **ESP32** (추천)
-   - BLE 내장
-   - WiFi 지원 (향후 확장 가능)
-   - 저렴하고 구하기 쉬움
-   - 예: ESP32 DevKit V1
+점글이 프로젝트의 표준 하드웨어는 다음을 사용합니다:
 
-2. **nRF52840**
-   - BLE 5.0 지원
-   - 저전력
-   - 예: Adafruit Feather nRF52840
+1. **Arduino UNO** (표준)
+   - USB Serial 통신
+   - GPIO 핀: D2, D3, D4
+   - Raspberry Pi와 USB로 연결
 
-3. **Arduino Nano 33 BLE**
-   - Arduino 호환
-   - BLE 내장
-   - 작은 크기
+2. **Raspberry Pi 4** (BLE Bridge)
+   - BLE 서버 (bluezero)
+   - USB Serial → Arduino 연결
+   - BLE ↔ Serial 브릿지 역할
+
+3. **JY-SOFT 스마트 점자 모듈 × 3**
+   - 6-dot 솔레노이드 × 3셀
+   - 총 18-dot 출력
+   - 74HC595 Shift Register × 3
+   - L293D Motor Driver × 6
 
 ### 추가 부품
 
-- **점자 핀 제어용**
-  - 솔레노이드 (Solenoid) 또는
-  - 서보 모터 (Servo Motor) 또는
-  - 스테퍼 모터 (Stepper Motor)
-
 - **전원 공급**
-  - USB 전원 또는
-  - 배터리 (모바일 사용 시)
+  - 5V DC, 최소 1.5A (권장: 2A 이상)
+  - 점자 모듈 × 3에 충분한 전류 공급
 
-- **점자 셀 모듈**
-  - 6개 핀 × 셀 개수
-  - 예: 20셀 = 120개 핀
+- **연결 케이블**
+  - Arduino ↔ 점자 모듈: 5핀 케이블 (VCC, GND, DATA, LATCH, CLOCK)
+  - Arduino ↔ Raspberry Pi: USB 케이블
 
-## Arduino 펌웨어 코드 (ESP32)
+## Arduino UNO 펌웨어 코드 (3셀 버전)
+
+### 프로젝트 구조
+
+```
+arduino/
+└── braille_3cell/
+    └── braille_3cell.ino
+```
+
+### 펌웨어 코드 (표준 3셀 버전)
+
+이 펌웨어는 HARDWARE_SPEC.md의 3셀 스펙을 준수합니다.
+
+#### `arduino/braille_3cell/braille_3cell.ino`
+
+```cpp
+/*
+ * 점글이 Arduino UNO 펌웨어 (3셀 버전)
+ * JY-SOFT 스마트 점자 모듈 × 3 제어
+ * 
+ * HARDWARE_SPEC.md의 3셀 스펙을 준수합니다.
+ * 
+ * 핀맵 (불변):
+ * - DATA: D2
+ * - LATCH: D3
+ * - CLOCK: D4
+ * 
+ * 3셀 버퍼 구조:
+ * - 셀1: 가장 최근 문자
+ * - 셀2: 이전 문자
+ * - 셀3: 그 이전 문자
+ * 
+ * 전송 순서: 셀3 → 셀2 → 셀1 (shiftOut)
+ */
+
+// 핀 정의 (HARDWARE_SPEC.md에 명시된 값 - 불변)
+const int DATA_PIN = 2;   // DATA 핀
+const int LATCH_PIN = 3;  // LATCH 핀
+const int CLOCK_PIN = 4;  // CLOCK 핀
+
+// 3셀 버퍼 (셀1, 셀2, 셀3)
+byte cellBuf[3] = {0, 0, 0};
+
+void setup() {
+  Serial.begin(115200);
+  
+  // 핀 모드 설정
+  pinMode(DATA_PIN, OUTPUT);
+  pinMode(LATCH_PIN, OUTPUT);
+  pinMode(CLOCK_PIN, OUTPUT);
+  
+  // 초기 상태
+  digitalWrite(LATCH_PIN, LOW);
+  digitalWrite(CLOCK_PIN, LOW);
+  digitalWrite(DATA_PIN, LOW);
+  
+  Serial.println("[Arduino] 점글이 3셀 펌웨어 시작");
+  Serial.println("[Arduino] 점자 모듈 × 3 대기 중...");
+  Serial.println("[Arduino] 버퍼 초기화: [셀1=0, 셀2=0, 셀3=0]");
+}
+
+void loop() {
+  if (Serial.available()) {
+    // Serial로 문자 수신
+    char c = Serial.read();
+    
+    // 문자를 점자 패턴으로 변환
+    uint8_t pattern = brailleCharToPattern(c);
+    
+    // 버퍼 이동: 새 문자는 셀1에, 기존 내용은 오른쪽으로 이동
+    // 셀3 → 셀2 → 셀1 → 새 패턴
+    cellBuf[2] = cellBuf[1];  // 셀2 → 셀3
+    cellBuf[1] = cellBuf[0];  // 셀1 → 셀2
+    cellBuf[0] = pattern;     // 새 패턴 → 셀1
+    
+    // 3셀 출력 (셀3 → 셀2 → 셀1 순서로 shiftOut)
+    setBraille3Cells(cellBuf);
+    
+    Serial.print("[Arduino] 수신: '");
+    Serial.print(c);
+    Serial.print("' → 패턴: 0x");
+    Serial.print(pattern, HEX);
+    Serial.print(" | 버퍼: [셀1=0x");
+    Serial.print(cellBuf[0], HEX);
+    Serial.print(", 셀2=0x");
+    Serial.print(cellBuf[1], HEX);
+    Serial.print(", 셀3=0x");
+    Serial.print(cellBuf[2], HEX);
+    Serial.println("]");
+  }
+}
+
+/**
+ * 3셀 점자 패턴을 Shift Register로 전송
+ * 
+ * 전송 순서: 셀3 → 셀2 → 셀1 (마지막 셀부터 먼저 밀어넣음)
+ * shiftOut 방향: MSBFIRST (최상위 비트부터)
+ * 
+ * @param cells 3셀 버퍼 배열 [셀1, 셀2, 셀3]
+ */
+void setBraille3Cells(byte cells[3]) {
+  // LATCH를 LOW로 설정 (데이터 입력 준비)
+  digitalWrite(LATCH_PIN, LOW);
+  
+  // Shift Register로 데이터 전송 (셀3 → 셀2 → 셀1 순서)
+  // MSBFIRST: 최상위 비트부터 전송
+  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, cells[2]);  // 셀3 먼저
+  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, cells[1]);  // 셀2
+  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, cells[0]);   // 셀1 마지막
+  
+  // LATCH를 HIGH → LOW로 변경하여 출력 적용
+  digitalWrite(LATCH_PIN, HIGH);
+  delayMicroseconds(10); // 짧은 대기 (안정성)
+  digitalWrite(LATCH_PIN, LOW);
+}
+
+/**
+ * 문자를 점자 패턴으로 변환
+ * 
+ * 실제 구현은 backend/data/ko_braille.json 매핑 테이블을 참조해야 합니다.
+ * 여기서는 기본 구조만 제공합니다.
+ * 
+ * @param c 문자 (한글, 영문, 숫자 등)
+ * @return 점자 패턴 (0~63, 6-bit)
+ */
+uint8_t brailleCharToPattern(char c) {
+  // TODO: 실제 한글 점자 매핑 구현
+  // backend/data/ko_braille.json 파일 참조 필요
+  
+  // 한글 처리 (실제로는 자음/모음 분해 필요)
+  if (c >= '가' && c <= '힣') {
+    // 한글 → 점자 변환 로직
+    // backend/data/ko_braille.json 참조
+    // 현재는 임시 매핑
+    return 0x01; // 임시
+  }
+  
+  // 영문 처리
+  if (c >= 'A' && c <= 'Z') {
+    return (c - 'A') + 1; // 간단한 매핑
+  }
+  
+  // 숫자 처리
+  if (c >= '0' && c <= '9') {
+    return (c - '0') + 0x20; // 간단한 매핑
+  }
+  
+  return 0; // 공백 또는 미지원 문자
+}
+```
+
+### 주요 특징
+
+1. **3셀 버퍼 관리**
+   - 새 문자는 항상 셀1에 배치
+   - 기존 문자는 오른쪽으로 이동 (셀1→셀2→셀3)
+
+2. **전송 순서**
+   - 셀3 → 셀2 → 셀1 순서로 `shiftOut()` 호출
+   - Shift Register가 직렬 연결되어 있으므로 마지막 셀부터 먼저 전송
+
+3. **shiftOut 방향**
+   - `MSBFIRST` 사용 (최상위 비트부터 전송)
+   - HARDWARE_SPEC.md의 스펙 준수
+
+4. **즉시 반응**
+   - `delay()` 최소화
+   - 문자 수신 즉시 출력
+
+---
+
+## Arduino 펌웨어 코드 (ESP32) - 대안
 
 ### 프로젝트 구조
 
@@ -75,6 +262,8 @@ hardware/
     └── braille_display/
         └── braille_display.ino
 ```
+
+**참고**: ESP32 버전은 BLE를 직접 지원하지만, 표준 하드웨어는 Arduino UNO + Raspberry Pi 구조를 사용합니다.
 
 ### 펌웨어 코드
 

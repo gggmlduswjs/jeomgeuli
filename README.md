@@ -53,10 +53,12 @@
 - 자세한 내용: [PWA 설치 가이드](./docs/PWA_SETUP.md)
 
 ### 하드웨어 연동 (점자 디스플레이)
-- BLE 점자 디스플레이와 연동 가능
+- **점글이 표준 하드웨어 (3셀 버전)**: [하드웨어 스펙](./docs/HARDWARE_SPEC.md)
+  - Arduino UNO + Raspberry Pi 4 + JY-SOFT 점자 모듈 × 3
+  - 총 18-dot 출력 (3셀 × 6-dot)
+  - 펌웨어: `arduino/braille_3cell/braille_3cell.ino`
 - 상용 제품 사용: [하드웨어 연동 가이드](./docs/HARDWARE_INTEGRATION.md)
 - 직접 제작: [Arduino 펌웨어 개발 가이드](./docs/ARDUINO_FIRMWARE.md)
-- **점글이 표준 하드웨어**: [하드웨어 스펙](./docs/HARDWARE_SPEC.md)
 
 ### 1. 저장소 클론
 \`\`\`bash
@@ -101,16 +103,21 @@ npm run dev
 
 **필요한 하드웨어:**
 - Arduino UNO
-- JY-SOFT 스마트 점자 모듈
-- 5핀 케이블
-- 5V, 2A 이상 전원 어댑터
+- JY-SOFT 스마트 점자 모듈 × 3 (3셀 버전, 총 18-dot)
+- 5핀 케이블 (점자 모듈 연결용)
+- 5V, 2A 이상 전원 어댑터 (3셀 구동용)
 
 **실행 순서:**
 
-1. **Arduino 펌웨어 업로드**
+1. **Arduino 펌웨어 업로드 (3셀 버전)**
    ```bash
-   # Arduino IDE에서 arduino/braille_firmware/braille_firmware.ino 업로드
+   # Arduino IDE에서 arduino/braille_3cell/braille_3cell.ino 업로드
    # 자세한 내용: arduino/README.md
+   # 
+   # 3셀 버전 특징:
+   # - 3셀 버퍼 관리 (셀1, 셀2, 셀3)
+   # - 새 문자는 셀1에, 기존은 오른쪽으로 이동
+   # - shiftOut 순서: 셀3 → 셀2 → 셀1 (MSBFIRST)
    ```
 
 2. **백엔드 및 프론트엔드 실행** (위의 2, 3단계 참조)
@@ -130,13 +137,16 @@ npm run dev
 **필요한 하드웨어:**
 - Raspberry Pi 4 (BLE 지원)
 - Arduino UNO
-- JY-SOFT 스마트 점자 모듈
-- 5핀 케이블
-- 5V, 2A 이상 전원 어댑터
+- JY-SOFT 스마트 점자 모듈 × 3 (3셀 버전, 총 18-dot)
+- 5핀 케이블 (점자 모듈 연결용)
+- 5V, 2A 이상 전원 어댑터 (3셀 구동용)
 
 **실행 순서:**
 
-1. **Arduino 펌웨어 업로드** (방법 A와 동일)
+1. **Arduino 펌웨어 업로드 (3셀 버전)** (방법 A와 동일)
+   ```bash
+   # Arduino IDE에서 arduino/braille_3cell/braille_3cell.ino 업로드
+   ```
 
 2. **Raspberry Pi BLE 서버 실행**
    ```bash

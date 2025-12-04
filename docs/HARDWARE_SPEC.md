@@ -20,7 +20,7 @@
 [3] Arduino UNO (Braille Cell Controller)
        ↕ GPIO (D2, D3, D4)
 
-[4] 스마트 점자 모듈 (JY-SOFT 6-dot solenoid module)
+[4] 스마트 점자 모듈 × 3 (JY-SOFT 6-dot solenoid module, 총 18-dot)
 ```
 
 ### 아키텍처 다이어그램
@@ -54,11 +54,11 @@
                │ VCC, GND, DATA, LATCH, CLOCK
                ▼
 ┌─────────────────────────────────────┐
-│   JY-SOFT 스마트 점자 모듈           │
-│   - 74HC595 Shift Register × 1      │
-│   - L293D Motor Driver × 2           │
-│   - 5V 솔레노이드 × 6                │
-│   - 6-dot 점자 출력                  │
+│   JY-SOFT 스마트 점자 모듈 × 3       │
+│   - 74HC595 Shift Register × 1 per cell │
+│   - L293D Motor Driver × 2 per cell     │
+│   - 5V 솔레노이드 × 6 per cell          │
+│   - 6-dot 점자 출력 × 3셀 (총 18-dot)   │
 └─────────────────────────────────────┘
 ```
 
@@ -73,6 +73,7 @@
 - **제조사**: 주영SOFT (JY-SOFT)
 - **제품명**: 스마트 점자 모듈 (아두이노 제어용)
 - **출력 방식**: 6-dot 솔레노이드
+- **모듈 수**: 3셀 (연결 시 18-dot / 3-byte 출력)
 - **참고 블로그**: [주영 소프트 - 아두이노 제어 점자 표시기 사용기](https://m.blog.naver.com/mapes_khkim/222152736576)
 
 ### 물리적 사양
@@ -83,11 +84,11 @@
 
 ### 내부 구성
 
-| 부품 | 수량 | 역할 |
-|------|------|------|
-| 74HC595 Shift Register | 1개 | 시리얼 데이터를 병렬로 변환 |
-| L293D Motor Driver | 2개 | 솔레노이드 구동 전류 증폭 |
-| DS-0420S 솔레노이드 (5V) | 6개 | 점자 핀 제어 (DOT 1~6) |
+| 부품 | 수량 (per cell) | 총 수량 (3셀) | 역할 |
+|------|----------------|-------------|------|
+| 74HC595 Shift Register | 1개 | 3개 | 시리얼 데이터를 병렬로 변환 |
+| L293D Motor Driver | 2개 | 6개 | 솔레노이드 구동 전류 증폭 |
+| DS-0420S 솔레노이드 (5V) | 6개 | 18개 | 점자 핀 제어 (DOT 1~6) |
 
 ### 전기적 사양
 
@@ -158,7 +159,7 @@ Arduino UNO는 다음 핀맵을 반드시 따라야 합니다:
 
 ---
 
-## 4. Arduino 펌웨어 규격
+## 4. Arduino 펌웨어 규격 (3셀 버전)
 
 ### 기본 구조
 
@@ -167,9 +168,23 @@ Arduino는 다음을 수행해야 합니다:
 1. **입력**: USB Serial로 단일 문자 또는 점자 패턴 바이트를 수신
 2. **처리**: 
    - 문자를 점자 패턴(6-bit integer)으로 변환
-   - `shiftOut(DATA, CLOCK)`으로 모듈에 전송
+   - 3셀 버퍼에 저장 (새 문자는 셀1, 기존은 오른쪽으로 이동)
+   - `shiftOut(DATA, CLOCK, MSBFIRST)`로 3셀을 순차 전송 (셀3→셀2→셀1)
    - LATCH HIGH → LOW로 상태 적용
-3. **출력**: 점자 모듈에 패턴 전송
+3. **출력**: 점자 모듈 × 3에 패턴 전송 (총 18-dot)
+
+### 3셀 버퍼 구조
+
+- **셀1**: 가장 최근 문자 (새로 입력된 문자)
+- **셀2**: 이전 문자
+- **셀3**: 그 이전 문자
+
+**버퍼 이동 규칙**:
+- 새 문자 입력 시: 셀3 ← 셀2 ← 셀1 ← 새 패턴
+- 예: 입력 "ㄱ" → "ㄴ" → "ㄷ"
+  - 첫 번째: [셀1=ㄱ, 셀2=0, 셀3=0]
+  - 두 번째: [셀1=ㄴ, 셀2=ㄱ, 셀3=0]
+  - 세 번째: [셀1=ㄷ, 셀2=ㄴ, 셀3=ㄱ]
 
 ### Serial 통신 설정
 
@@ -178,43 +193,54 @@ Arduino는 다음을 수행해야 합니다:
 - **패리티**: 없음
 - **정지 비트**: 1
 
-### 코드 구조 예시
+### 코드 구조 예시 (3셀 버전)
 
 ```cpp
-#include "braille.h"
-
 // 핀 정의 (불변)
-int dataPin = 2;   // DATA 핀
-int latchPin = 3;  // LATCH 핀
-int clockPin = 4;  // CLOCK 핀
-int no_module = 1; // 점자 모듈 개수 (1개)
+const int DATA_PIN = 2;   // DATA 핀
+const int LATCH_PIN = 3;  // LATCH 핀
+const int CLOCK_PIN = 4;  // CLOCK 핀
 
-braille bra(dataPin, latchPin, clockPin, no_module);
+// 3셀 버퍼 (셀1, 셀2, 셀3)
+byte cellBuf[3] = {0, 0, 0};
 
 void setup() {
   Serial.begin(115200);
-  bra.begin();
-  Serial.println("[Arduino] 점글이 펌웨어 시작");
+  pinMode(DATA_PIN, OUTPUT);
+  pinMode(LATCH_PIN, OUTPUT);
+  pinMode(CLOCK_PIN, OUTPUT);
+  Serial.println("[Arduino] 점글이 3셀 펌웨어 시작");
 }
 
 void loop() {
   if (Serial.available()) {
     char c = Serial.read();
-    
-    // 문자를 점자 패턴으로 변환
     uint8_t pattern = brailleCharToPattern(c);
     
-    // 첫 번째 셀(인덱스 0)에 패턴 설정
-    bra.set(0, pattern);
+    // 버퍼 이동: 새 문자는 셀1에, 기존 내용은 오른쪽으로 이동
+    cellBuf[2] = cellBuf[1];  // 셀2 → 셀3
+    cellBuf[1] = cellBuf[0];  // 셀1 → 셀2
+    cellBuf[0] = pattern;     // 새 패턴 → 셀1
     
-    // 점자 모듈에 출력 적용
-    bra.refresh();
-    
-    Serial.print("[Arduino] 수신: '");
-    Serial.print(c);
-    Serial.print("' → 패턴: 0x");
-    Serial.println(pattern, HEX);
+    // 3셀 출력 (셀3 → 셀2 → 셀1 순서)
+    setBraille3Cells(cellBuf);
   }
+}
+
+/**
+ * 3셀 점자 패턴을 Shift Register로 전송
+ * 전송 순서: 셀3 → 셀2 → 셀1 (마지막 셀부터 먼저 밀어넣음)
+ * shiftOut 방향: MSBFIRST (최상위 비트부터)
+ */
+void setBraille3Cells(byte cells[3]) {
+  digitalWrite(LATCH_PIN, LOW);
+  // 셀3 → 셀2 → 셀1 순서로 전송
+  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, cells[2]);  // 셀3 먼저
+  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, cells[1]);  // 셀2
+  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, cells[0]);   // 셀1 마지막
+  digitalWrite(LATCH_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(LATCH_PIN, LOW);
 }
 
 /**
@@ -247,31 +273,15 @@ uint8_t brailleCharToPattern(char c) {
 }
 ```
 
-### braille.h 라이브러리
+### 전송 순서 규칙 (불변)
 
-JY-SOFT 점자 모듈은 `braille.h` 라이브러리를 사용합니다:
+**중요**: Shift Register가 직렬 연결되어 있으므로, 반드시 다음 순서를 따라야 합니다:
 
-```cpp
-// 라이브러리 사용법
-braille bra(DATA_PIN, LATCH_PIN, CLOCK_PIN, MODULE_COUNT);
+1. **셀3 → 셀2 → 셀1** 순서로 `shiftOut()` 호출
+2. **MSBFIRST** 방향 사용 (최상위 비트부터 전송)
+3. 마지막 셀(셀3)부터 먼저 밀어넣어야 올바른 위치에 배치됨
 
-// 초기화
-bra.begin();
-
-// 특정 셀에 패턴 설정
-bra.set(cellIndex, pattern);
-
-// 점 켜기
-bra.on(cellIndex, dotIndex);
-
-// 점 끄기
-bra.off(cellIndex, dotIndex);
-
-// 변경사항 적용 (반드시 호출 필요)
-bra.refresh();
-```
-
-**참고**: `braille.h` 라이브러리는 JY-SOFT에서 제공하는 샘플 코드에 포함되어 있습니다.
+**이유**: Shift Register는 데이터를 시프트하면서 전달하므로, 마지막 셀부터 먼저 보내야 첫 번째 셀에 올바르게 배치됩니다.
 
 ---
 
@@ -673,6 +683,15 @@ Arduino:
 - ❌ **전압**: 5V (변경 금지)
 - ❌ **통신 케이블**: 5핀 (VCC, GND, DATA, LATCH, CLOCK) (변경 금지)
 - ❌ **점 번호 비트 구성**: DOT 1~6 = bit 0~5 (변경 금지)
+- ❌ **모듈 수**: 3셀 (변경 금지)
+- ❌ **총 출력**: 18-dot (3셀 × 6-dot) (변경 금지)
+
+### Arduino 펌웨어 규칙
+
+- ❌ **셀 버퍼 크기**: 3셀 (변경 금지)
+- ❌ **전송 순서**: 셀3 → 셀2 → 셀1 (변경 금지)
+- ❌ **shiftOut 방향**: MSBFIRST (변경 금지)
+- ❌ **버퍼 이동**: 새 문자는 셀1, 기존은 오른쪽으로 이동 (변경 금지)
 
 ### Serial 통신
 

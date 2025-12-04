@@ -1,8 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
+import { convertBraille } from "@/lib/api";
 
 /**
  * Web Serial API를 사용한 Arduino 직접 연결
  * Raspberry Pi 없이 Windows에서 바로 사용 가능
+ * 
+ * 점자 패턴 변환 후 전송 (한글 지원)
  */
 
 export interface BrailleSerialConfig {
@@ -138,8 +141,8 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
   }, [port, isConnected]);
 
   /**
-   * 텍스트를 Serial로 직접 전송
-   * Arduino가 문자를 받아서 점자로 변환함
+   * 텍스트를 점자 패턴으로 변환하여 Serial로 전송
+   * API를 통해 점자 변환 후 패턴 바이트를 직접 전송 (한글 지원)
    * @param text 전송할 텍스트
    */
   const writeText = useCallback(async (text: string) => {
@@ -150,18 +153,65 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
     }
 
     try {
+      // API를 통해 점자 패턴으로 변환
+      const brailleResponse = await convertBraille(text);
+      
+      if (!brailleResponse.ok || !brailleResponse.cells || brailleResponse.cells.length === 0) {
+        console.warn("[Serial] 점자 변환 실패 또는 빈 결과:", brailleResponse);
+        return;
+      }
+
       const writer = port.writable?.getWriter();
       if (!writer) {
         throw new Error("Writer를 가져올 수 없습니다.");
       }
 
-      // 텍스트를 UTF-8 바이트로 변환하여 전송
-      const encoder = new TextEncoder();
-      const data = encoder.encode(text);
-      await writer.write(data);
+      // 점자 셀 배열을 패턴 바이트 배열로 변환
+      // 각 셀은 6개 점을 나타내는 숫자 배열 [0,1,0,0,0,0] 형태
+      const patterns: number[] = [];
+      
+      for (const cell of brailleResponse.cells) {
+        if (Array.isArray(cell) && cell.length === 6) {
+          // 6개 점을 바이트로 변환 (DOT 1~6 = bit 0~5)
+          const pattern = cell.reduce((acc, dot, i) => {
+            return acc | ((dot ? 1 : 0) << i);
+          }, 0);
+          patterns.push(pattern);
+        }
+      }
+
+      if (patterns.length === 0) {
+        console.warn("[Serial] 변환된 패턴이 없습니다.");
+        writer.releaseLock();
+        return;
+      }
+
+      // 패턴 선택 전략:
+      // - 단일 문자 + 패턴 1개: 첫 번째 패턴만 전송 (단일 자음/모음)
+      // - 단일 문자 + 패턴 2개 이상: 모든 패턴 전송 (완성형 한글, 최대 3개)
+      // - 여러 문자: 최근 3개 패턴 전송 (3셀 버퍼 활용)
+      const patternsToSend = text.length === 1
+        ? (patterns.length === 1 
+          ? patterns.slice(0, 1)  // 단일 자음/모음: 첫 패턴만
+          : patterns.slice(0, Math.min(patterns.length, 3)))  // 완성형 한글: 모든 패턴 (최대 3개)
+        : patterns.slice(-3);    // 여러 문자: 최근 3개
+      
+      // 각 패턴을 개별적으로 순차 전송 (Arduino가 각 바이트를 순차 처리)
+      // delay를 추가하여 Arduino가 각 패턴을 안정적으로 처리할 수 있도록 함
+      for (let i = 0; i < patternsToSend.length; i++) {
+        const pattern = patternsToSend[i];
+        await writer.write(new Uint8Array([pattern]));
+        
+        // 마지막 패턴이 아니면 delay 추가 (Arduino 버퍼 처리 시간 확보)
+        if (i < patternsToSend.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay
+        }
+      }
+      
       writer.releaseLock();
       
-      console.log(`[Serial] ${text.length} 문자 전송: ${text}`);
+      console.log(`[Serial] ${text.length} 문자 -> ${patterns.length}개 패턴 (전송: ${patternsToSend.length}개)`);
+      console.log(`[Serial] 패턴: [${patternsToSend.map(p => '0x' + p.toString(16).toUpperCase().padStart(2, '0')).join(', ')}]`);
     } catch (error: any) {
       console.error("[Serial] 텍스트 전송 실패:", error);
       setError(`전송 실패: ${error?.message || '알 수 없는 오류'}`);
