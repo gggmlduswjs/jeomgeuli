@@ -142,13 +142,28 @@ export default function LearnStep() {
   const key = `${mode}:${heading}`;
 
   // 학습 항목이 변경될 때 점자 출력
+  // 디바이스가 연결되어 있으면 체크박스 상태와 관계없이 자동으로 점자 출력
   useEffect(() => {
-    if (current && idx >= 0 && heading && braille.enabled) {
-      // 현재 학습 항목을 점자로 출력
-      braille.enqueueKeywords([heading]);
+    if (current && idx >= 0 && heading) {
+      // 디바이스가 연결되어 있으면 자동으로 점자 출력
+      if (isConnected) {
+        braille.writeText(heading);
+      } else if (braille.enabled) {
+        // 디바이스가 연결되지 않았을 때만 체크박스 상태 확인
+        braille.enqueueKeywords([heading]);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, idx, heading, braille.enabled]);
+  }, [current, idx, heading, isConnected, braille.enabled]);
+
+  // 디바이스 연결 시 자동으로 현재 항목 점자 출력
+  useEffect(() => {
+    if (isConnected && current && idx >= 0 && heading) {
+      // 연결되면 즉시 현재 항목 출력
+      braille.writeText(heading);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]);
 
   // 비동기 셀 계산 (항목별 캐싱 + 취소)
   const [computed, setComputed] = useState<CellTuple[]>([]);
@@ -171,7 +186,7 @@ export default function LearnStep() {
       } catch {}
 
       try {
-        const boolCells = localToBrailleCells(heading);
+        const boolCells = await localToBrailleCells(heading);
         const toTuple = (b:boolean[]): CellTuple => [b[0]?1:0,b[1]?1:0,b[2]?1:0,b[3]?1:0,b[4]?1:0,b[5]?1:0];
         const norm = boolCells.map((b: any) => toTuple(b));
         if (!cancelled) {

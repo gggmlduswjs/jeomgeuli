@@ -6,6 +6,7 @@ import SpeechBar from '../components/input/SpeechBar';
 import useTTS from '../hooks/useTTS';
 import useSTT from '../hooks/useSTT';
 import useVoiceCommands from '../hooks/useVoiceCommands';
+import { useBraillePlayback } from '../hooks/useBraillePlayback';
 import micMode from '../lib/voice/MicMode';
 import ToastA11y from '../components/system/ToastA11y';
 
@@ -15,6 +16,15 @@ export default function Home() {
   const { start: startSTT, stop: stopSTT, isListening, transcript } = useSTT();
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  
+  // Serial 사용 (디바이스 연결)
+  const braille = useBraillePlayback({
+    serial: {
+      baudRate: 115200,
+    },
+  });
+  
+  const { isConnected, connect, disconnect, deviceName } = braille;
 
   // 페이지 진입 시 자동 음성 안내
   useEffect(() => {
@@ -180,6 +190,27 @@ export default function Home() {
 
   return (
     <AppShellMobile title="점글이" className="relative">
+      {/* 디바이스 연결 버튼 */}
+      <div className="mb-2 flex justify-end px-4">
+        {!isConnected ? (
+          <button
+            onClick={connect}
+            className="px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+            aria-label="점자 디바이스 연결"
+          >
+            🔌 디바이스 연결
+          </button>
+        ) : (
+          <button
+            onClick={disconnect}
+            className="px-3 py-1.5 text-sm bg-success text-white rounded-lg hover:bg-success/90 transition-colors focus:outline-none focus:ring-2 focus:ring-success/50"
+            aria-label="점자 디바이스 연결 해제"
+          >
+            ✓ {deviceName || '연결됨'}
+          </button>
+        )}
+      </div>
+      
       {/* 음성 명령 표시줄 */}
       <div className="mb-4">
         <SpeechBar isListening={isListening} transcript={transcript} />

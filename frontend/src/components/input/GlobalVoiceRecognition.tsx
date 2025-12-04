@@ -264,6 +264,15 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
     },
   });
 
+  // 페이지 진입 시 중복 처리 상태 초기화
+  useEffect(() => {
+    // 페이지가 변경될 때마다 중복 처리 상태 초기화
+    lastBroadcastRef.current = { text: '', time: 0 };
+    commandExecutedRef.current = 0;
+    lastTranscriptRef.current = '';
+    console.log('[GlobalVoice] 페이지 변경 - 중복 처리 상태 초기화:', location.pathname);
+  }, [location.pathname]);
+  
   // 최종 인식 결과만 처리 (TRANSCRIPT 이벤트를 통해)
   useEffect(() => {
     // 퀴즈 모드에서는 GlobalVoiceRecognition이 transcript를 처리하지 않음 (퀴즈 모드가 자체적으로 처리)
@@ -278,9 +287,21 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       
       console.log('[GlobalVoice] 최종 인식 결과 수신:', finalText);
       
-      // 중복 처리 방지 (시간 단축: 500ms → 300ms)
+      // 중복 처리 방지 (명령어 실행 후 2초 이내 같은 텍스트는 무시)
       const now = Date.now();
-      if (finalText === lastBroadcastRef.current.text && now - lastBroadcastRef.current.time < 300) {
+      const timeSinceCommand = now - commandExecutedRef.current;
+      
+      // 명령어 실행 직후(2초 이내)이고 같은 텍스트면 무시
+      if (finalText === lastBroadcastRef.current.text && 
+          timeSinceCommand < 2000 && 
+          now - lastBroadcastRef.current.time < 1000) {
+        console.log('[GlobalVoice] 최종 결과 중복 무시 (명령 실행 직후):', finalText);
+        return;
+      }
+      
+      // 일반적인 중복 방지 (300ms 이내 같은 텍스트)
+      if (finalText === lastBroadcastRef.current.text && 
+          now - lastBroadcastRef.current.time < 300) {
         console.log('[GlobalVoice] 최종 결과 중복 무시:', finalText);
         return;
       }

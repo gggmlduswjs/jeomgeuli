@@ -3,24 +3,25 @@ from django.views.decorators.csrf import csrf_exempt
 import json, re
 import xml.etree.ElementTree as ET
 import urllib.request
+from utils.braille_converter import _load_braille_map
 
-# 안전한 기본 매핑(부족분은 무시하지 말고 빈칸 대신 0 리턴)
-KO_BRAILLE = {
-    # 자음(초성/받침 공통 기초) – 6점(상:1,2,3 / 하:4,5,6)
-    "ㄱ":[1,0,0,0,0,0], "ㄴ":[1,1,0,0,0,0], "ㄷ":[1,0,0,1,0,0], "ㄹ":[1,1,0,1,0,0],
-    "ㅁ":[1,1,0,0,1,0], "ㅂ":[1,0,0,1,1,0], "ㅅ":[0,1,0,1,0,0], "ㅇ":[0,0,0,1,1,0],
-    "ㅈ":[1,1,0,0,0,0], # (간이값) 프로젝트의 정식 JSON이 있으면 그걸 쓰세요
-    "ㅊ":[1,1,0,0,1,0], "ㅋ":[1,0,1,0,0,0], "ㅌ":[1,1,1,0,0,0], "ㅍ":[1,0,1,1,0,0], "ㅎ":[0,1,1,1,0,0],
-    # 모음(간이): 실 배포시 규정 JSON으로 교체
-    "ㅏ":[0,1,0,0,0,1], "ㅑ":[0,1,0,0,1,1], "ㅓ":[1,0,0,0,0,1], "ㅕ":[1,0,0,0,1,1],
-    "ㅗ":[0,1,1,0,0,0], "ㅛ":[0,1,1,0,0,1], "ㅜ":[1,0,1,0,0,0], "ㅠ":[1,0,1,0,0,1],
-    "ㅡ":[0,0,1,0,0,0], "ㅣ":[0,0,0,0,0,1],
-    # 띄어쓰기/구두점
-    " ":[0,0,0,0,0,0], ".":[0,0,1,0,1,1],
-}
+# 점자 매핑은 ko_braille.json에서 로드 (업데이트된 데이터 사용)
+_braille_map_cache = None
+
+def _get_braille_map():
+    """점자 매핑 테이블을 로드 (캐시 사용)"""
+    global _braille_map_cache
+    if _braille_map_cache is None:
+        _braille_map_cache = _load_braille_map()
+    return _braille_map_cache
 
 def _cell(ch:str):
-    return KO_BRAILLE.get(ch, [0,0,0,0,0,0])
+    """문자를 점자 셀로 변환"""
+    braille_map = _get_braille_map()
+    arr = braille_map.get(ch)
+    if isinstance(arr, list) and len(arr) == 6:
+        return arr
+    return [0,0,0,0,0,0]
 
 def _split_korean(text:str):
     # 간단 분해: 글자 단위(완성형 그대로). 상세 초성/중성/종성 분해는 프론트가 가진 사전으로 보완.

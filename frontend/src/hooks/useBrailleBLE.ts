@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { textToPackets, CMD_SINGLE, CMD_MULTI, CMD_CLEAR, CMD_TEST } from "@/lib/encodeHangul";
 
 /**
  * 점자 BLE 디바이스 연결 및 제어 Hook
@@ -170,7 +171,40 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
   }, [device]);
 
   /**
-   * 점자 셀 배열을 BLE로 전송
+   * CMD/PATTERN 패킷 배열을 BLE로 전송 (2-byte 패킷 프로토콜)
+   * @param packets [(CMD, pattern), ...] 리스트
+   */
+  const writePackets = useCallback(async (packets: [number, number][]) => {
+    if (!characteristic || !isConnected) {
+      throw new Error("BLE 디바이스가 연결되지 않았습니다.");
+    }
+
+    try {
+      // 각 패킷을 2-byte Uint8Array로 변환하여 순차 전송
+      for (const [cmd, pattern] of packets) {
+        const buffer = new Uint8Array([cmd & 0xFF, pattern & 0x3F]);
+        await characteristic.writeValue(buffer);
+        
+        // 디버그 로그
+        console.log(`[BLE] CMD: 0x${cmd.toString(16).toUpperCase().padStart(2, '0')}, Pattern: 0x${pattern.toString(16).toUpperCase().padStart(2, '0')}`);
+        
+        // 패킷 간 delay (Arduino 버퍼 처리 시간 확보)
+        if (packets.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      
+      console.log(`[BLE] ${packets.length}개 패킷 전송 완료`);
+    } catch (error: any) {
+      console.error("[BLE] 패킷 전송 실패:", error);
+      setError(`전송 실패: ${error?.message || '알 수 없는 오류'}`);
+      throw error;
+    }
+  }, [characteristic, isConnected]);
+
+  /**
+   * 점자 셀 배열을 BLE로 전송 (레거시 호환)
+   * @deprecated writePackets 사용 권장
    * @param cells 점자 셀 배열 (각 셀은 6개 점을 나타내는 숫자 배열)
    */
   const writeCells = useCallback(async (cells: number[][]) => {
@@ -200,36 +234,27 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
   }, [characteristic, isConnected]);
 
   /**
-   * 텍스트를 점자로 변환하여 전송 (내부 API 사용)
+   * 텍스트를 점자로 변환하여 전송 (encodeHangul 사용)
    * @param text 전송할 텍스트
    */
   const writeText = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
     try {
-      // API를 통해 점자 변환 (또는 로컬 변환)
-      const response = await fetch('/api/braille/convert/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      });
-
-      if (!response.ok) {
-        throw new Error('점자 변환 실패');
+      // encodeHangul을 사용하여 로컬 변환
+      const packets = await textToPackets(text);
+      if (packets.length === 0) {
+        console.warn("[BLE] 변환된 패킷이 없습니다.");
+        return;
       }
-
-      const data = await response.json();
-      if (data.cells && Array.isArray(data.cells)) {
-        await writeCells(data.cells);
-      } else {
-        throw new Error('잘못된 응답 형식');
-      }
+      
+      await writePackets(packets);
     } catch (error: any) {
       console.error("[BLE] 텍스트 전송 실패:", error);
       setError(`텍스트 전송 실패: ${error?.message || '알 수 없는 오류'}`);
       throw error;
     }
-  }, [writeCells]);
+  }, [writePackets]);
 
   /**
    * 레거시 호환: 패턴 배열 직접 전송
@@ -248,6 +273,34 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
     await writeCells(cells);
   }, [writeCells]);
 
+  /**
+   * 단일 패턴 전송 (CMD_SINGLE)
+   */
+  const sendSingle = useCallback(async (pattern: number) => {
+    await writePackets([[CMD_SINGLE, pattern & 0x3F]]);
+  }, [writePackets]);
+
+  /**
+   * 다중 패턴 전송 (CMD_MULTI)
+   */
+  const sendMulti = useCallback(async (pattern: number) => {
+    await writePackets([[CMD_MULTI, pattern & 0x3F]]);
+  }, [writePackets]);
+
+  /**
+   * 모든 셀 클리어 (CMD_CLEAR)
+   */
+  const sendClear = useCallback(async () => {
+    await writePackets([[CMD_CLEAR, 0x00]]);
+  }, [writePackets]);
+
+  /**
+   * 테스트 모드 (CMD_TEST)
+   */
+  const sendTest = useCallback(async () => {
+    await writePackets([[CMD_TEST, 0x00]]);
+  }, [writePackets]);
+
   return {
     isConnected,
     isBluetoothSupported,
@@ -255,9 +308,14 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
     error,
     connect,
     disconnect,
-    writeCells,
+    writePackets,
+    writeCells, // 레거시 호환
     writeText,
-    writePattern // 레거시 호환
+    writePattern, // 레거시 호환
+    sendSingle,
+    sendMulti,
+    sendClear,
+    sendTest
   };
 }
 

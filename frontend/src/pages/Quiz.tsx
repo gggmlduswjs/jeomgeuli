@@ -337,7 +337,7 @@ export default function Quiz() {
 
       // 2) 로컬 폴백 (한글 미지원이면 빈 배열이 올 수 있음)
       try {
-        const bools = localToBrailleCells(promptText(cur)); // boolean[][]
+        const bools = await localToBrailleCells(promptText(cur)); // boolean[][]
         const tuples = bools.map(b => toTuple(b));
         if (!cancelled) setCells(tuples);
       } catch { if (!cancelled) setCells([]); }

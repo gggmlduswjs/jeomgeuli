@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import { localToBrailleCells } from "@/lib/braille";
 import type { DotArray } from "@/types";
 
@@ -26,21 +26,38 @@ export function BrailleCell({
   className = "",
 }: BrailleCellProps) {
   // 점자 패턴 결정 (pattern 우선, 없으면 keyword 변환)
-  const braillePattern = useMemo<CellBool>(() => {
-    if (!active) return OFF6;
-    if (pattern) return normalizeTo6(pattern);
-
-    if (!keyword) return OFF6;
-
-    try {
-      // localToBrailleCells는 문자열 → 셀 배열 반환한다고 가정
-      const cells = localToBrailleCells(keyword);
-      // 한 글자 기준 첫 셀 사용. 없으면 OFF6
-      const first = Array.isArray(cells) ? (cells[0] as unknown as DotArray | undefined) : undefined;
-      return normalizeTo6(first);
-    } catch {
-      return OFF6;
+  const [braillePattern, setBraillePattern] = useState<CellBool>(OFF6);
+  
+  useEffect(() => {
+    if (!active) {
+      setBraillePattern(OFF6);
+      return;
     }
+    if (pattern) {
+      setBraillePattern(normalizeTo6(pattern));
+      return;
+    }
+    if (!keyword) {
+      setBraillePattern(OFF6);
+      return;
+    }
+
+    // localToBrailleCells는 async이므로 useEffect에서 처리
+    let cancelled = false;
+    (async () => {
+      try {
+        const cells = await localToBrailleCells(keyword);
+        if (!cancelled) {
+          // 한 글자 기준 첫 셀 사용. 없으면 OFF6
+          const first = Array.isArray(cells) && cells.length > 0 ? (cells[0] as unknown as DotArray | undefined) : undefined;
+          setBraillePattern(normalizeTo6(first));
+        }
+      } catch {
+        if (!cancelled) setBraillePattern(OFF6);
+      }
+    })();
+    
+    return () => { cancelled = true; };
   }, [keyword, pattern, active]);
 
   return (

@@ -80,3 +80,6 @@ const patternsToSend = text.length === 1
 - Arduino 펌웨어는 3셀 버퍼를 관리하며, 새 패턴이 들어오면 기존 패턴을 왼쪽으로 이동시킵니다.
 - 패턴 전송 간 50ms delay가 있어 Arduino가 각 패턴을 안정적으로 처리할 수 있습니다.
 
+
+
+

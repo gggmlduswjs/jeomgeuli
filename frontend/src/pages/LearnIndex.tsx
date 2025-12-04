@@ -39,8 +39,12 @@ export default function LearnIndex() {
     },
     back: handleBack,
     learn: () => {
-      // 이미 학습 메뉴에 있음
-      speak("이미 점자 학습 메뉴입니다.");
+      // "학습" 명령어는 하위 메뉴로 이동하도록 변경
+      // "이미 점자 학습 메뉴입니다" 대신 자모 학습으로 이동
+      stopTTS();
+      navigate('/learn/char');
+      speak('자모 학습으로 이동합니다.');
+      stopSTT();
     },
     // 각 항목 선택 (더 유연한 매칭)
     speak: (text: string) => {

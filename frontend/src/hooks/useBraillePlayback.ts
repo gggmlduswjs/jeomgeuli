@@ -56,11 +56,11 @@ export function useBraillePlayback(opts: UseBraillePlaybackOptions = {}) {
 
   // 프리뷰 설정
   const setPreview = useCallback(
-    (word: string) => {
+    async (word: string) => {
       setCurrentWord(word);
       if (previewMode === "local" && word.trim()) {
         try {
-          const cells = localToBrailleCells(word);
+          const cells = await localToBrailleCells(word);
           setCurrentCells(cells as unknown as DotArray[]);
         } catch (e) {
           console.warn("[BraillePlayback] preview failed:", e);
@@ -254,6 +254,7 @@ export function useBraillePlayback(opts: UseBraillePlaybackOptions = {}) {
 
     // 제어
     enqueueKeywords,
+    writeText, // 직접 텍스트 전송 (디바이스 연결 시 자동 출력용)
     start,
     pause,
     next,

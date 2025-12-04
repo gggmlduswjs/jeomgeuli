@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import BrailleCell from "./BrailleCell";
 import { convertBraille } from "@/lib/api";
 import { normalizeCells } from "@/lib/brailleSafe";
+import { localToBrailleCells } from "@/lib/braille";
 
 type DotArray = [boolean, boolean, boolean, boolean, boolean, boolean];
 
@@ -27,7 +28,19 @@ export default function BrailleStrip({ text, size = "normal" }: BrailleStripProp
       setCells([]);
 
       try {
-        // convertBraille(text, mode) → 서버 구현에 따라 { ok, cells, error } 또는 직접 배열 반환 가능
+        // 먼저 로컬 변환 시도 (encodeHangul 사용)
+        try {
+          const localCells = await localToBrailleCells(text);
+          if (!cancelled && localCells.length > 0) {
+            setCells(localCells as DotArray[]);
+            setError(null);
+            return;
+          }
+        } catch (localError) {
+          console.warn("[BrailleStrip] Local conversion failed, trying API:", localError);
+        }
+        
+        // 로컬 변환 실패 시 API 사용 (서버 검증용)
         const result = await convertBraille(text, "word");
         const raw = (result && "cells" in result ? result.cells : result) as unknown;
 
