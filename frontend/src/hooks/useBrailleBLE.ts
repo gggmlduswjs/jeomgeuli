@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { textToPackets, CMD_SINGLE, CMD_MULTI, CMD_CLEAR, CMD_TEST } from "@/lib/encodeHangul";
+import { textToPackets } from "@/lib/encodeHangul";
 
 /**
  * 점자 BLE 디바이스 연결 및 제어 Hook
@@ -171,32 +171,36 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
   }, [device]);
 
   /**
-   * CMD/PATTERN 패킷 배열을 BLE로 전송 (2-byte 패킷 프로토콜)
-   * @param packets [(CMD, pattern), ...] 리스트
+   * 점자 패턴 배열을 BLE로 전송 (리팩토링: CMD 제거)
+   * @param patterns 패턴 배열 (0x00~0x3F)
    */
-  const writePackets = useCallback(async (packets: [number, number][]) => {
+  const writePatterns = useCallback(async (patterns: number[]) => {
     if (!characteristic || !isConnected) {
       throw new Error("BLE 디바이스가 연결되지 않았습니다.");
     }
 
     try {
-      // 각 패킷을 2-byte Uint8Array로 변환하여 순차 전송
-      for (const [cmd, pattern] of packets) {
-        const buffer = new Uint8Array([cmd & 0xFF, pattern & 0x3F]);
-        await characteristic.writeValue(buffer);
-        
-        // 디버그 로그
-        console.log(`[BLE] CMD: 0x${cmd.toString(16).toUpperCase().padStart(2, '0')}, Pattern: 0x${pattern.toString(16).toUpperCase().padStart(2, '0')}`);
-        
-        // 패킷 간 delay (Arduino 버퍼 처리 시간 확보)
-        if (packets.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
+      // 패턴 배열을 Uint8Array로 변환 (6-bit 마스킹)
+      const buffer = new Uint8Array(patterns.map(p => p & 0x3F));
+      
+      // 디버그 로그
+      console.log(`[BLE] 📦 전송할 패턴 (${patterns.length}개):`);
+      patterns.forEach((pattern, idx) => {
+        const masked = pattern & 0x3F;
+        console.log(`[BLE]   패턴 ${idx + 1}: 0x${masked.toString(16).toUpperCase().padStart(2, '0')}`);
+      });
+
+      // 한 번에 전송
+      await characteristic.writeValue(buffer);
+      
+      // 패턴 간 delay (필요시)
+      if (patterns.length > 1) {
+        await new Promise(resolve => setTimeout(resolve, 50 * patterns.length));
       }
       
-      console.log(`[BLE] ${packets.length}개 패킷 전송 완료`);
+      console.log(`[BLE] ✅ ${patterns.length}개 패턴 전송 완료`);
     } catch (error: any) {
-      console.error("[BLE] 패킷 전송 실패:", error);
+      console.error("[BLE] 패턴 전송 실패:", error);
       setError(`전송 실패: ${error?.message || '알 수 없는 오류'}`);
       throw error;
     }
@@ -204,7 +208,7 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
 
   /**
    * 점자 셀 배열을 BLE로 전송 (레거시 호환)
-   * @deprecated writePackets 사용 권장
+   * @deprecated writePatterns 사용 권장
    * @param cells 점자 셀 배열 (각 셀은 6개 점을 나타내는 숫자 배열)
    */
   const writeCells = useCallback(async (cells: number[][]) => {
@@ -242,64 +246,60 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
 
     try {
       // encodeHangul을 사용하여 로컬 변환
-      const packets = await textToPackets(text);
-      if (packets.length === 0) {
-        console.warn("[BLE] 변환된 패킷이 없습니다.");
+      const patterns = await textToPackets(text);
+      if (patterns.length === 0) {
+        console.warn("[BLE] 변환된 패턴이 없습니다.");
         return;
       }
       
-      await writePackets(packets);
+      await writePatterns(patterns);
     } catch (error: any) {
       console.error("[BLE] 텍스트 전송 실패:", error);
       setError(`텍스트 전송 실패: ${error?.message || '알 수 없는 오류'}`);
       throw error;
     }
-  }, [writePackets]);
+  }, [writePatterns]);
 
   /**
    * 레거시 호환: 패턴 배열 직접 전송
-   * @deprecated writeCells 또는 writeText 사용 권장
+   * @deprecated writePatterns 사용 권장
    */
   const writePattern = useCallback(async (pattern: number[]) => {
-    // 단일 차원 배열을 2차원 배열로 변환 (레거시 호환)
-    const cells = pattern.map((value) => {
-      // 숫자를 6개 비트로 변환
-      const bits = [];
-      for (let i = 0; i < 6; i++) {
-        bits.push((value >> i) & 1);
-      }
-      return bits;
-    });
-    await writeCells(cells);
-  }, [writeCells]);
+    await writePatterns(pattern);
+  }, [writePatterns]);
 
   /**
-   * 단일 패턴 전송 (CMD_SINGLE)
+   * 단일 패턴 전송
    */
   const sendSingle = useCallback(async (pattern: number) => {
-    await writePackets([[CMD_SINGLE, pattern & 0x3F]]);
-  }, [writePackets]);
+    await writePatterns([pattern & 0x3F]);
+  }, [writePatterns]);
 
   /**
-   * 다중 패턴 전송 (CMD_MULTI)
+   * 다중 패턴 전송
    */
-  const sendMulti = useCallback(async (pattern: number) => {
-    await writePackets([[CMD_MULTI, pattern & 0x3F]]);
-  }, [writePackets]);
+  const sendMulti = useCallback(async (patterns: number[]) => {
+    await writePatterns(patterns.map(p => p & 0x3F));
+  }, [writePatterns]);
 
   /**
-   * 모든 셀 클리어 (CMD_CLEAR)
+   * 모든 셀 클리어 (3개 셀 모두 0x00)
    */
   const sendClear = useCallback(async () => {
-    await writePackets([[CMD_CLEAR, 0x00]]);
-  }, [writePackets]);
+    await writePatterns([0x00, 0x00, 0x00]);
+  }, [writePatterns]);
 
   /**
-   * 테스트 모드 (CMD_TEST)
+   * 테스트 모드 (dot1~dot6 순차 출력)
    */
   const sendTest = useCallback(async () => {
-    await writePackets([[CMD_TEST, 0x00]]);
-  }, [writePackets]);
+    const testPatterns = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20]; // dot1~dot6
+    for (const pattern of testPatterns) {
+      await writePatterns([pattern]);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+    }
+    await writePatterns([0x00]); // 마지막에 클리어
+  }, [writePatterns]);
 
   return {
     isConnected,
@@ -308,7 +308,7 @@ export function useBrailleBLE(config: BrailleBLEConfig = {}) {
     error,
     connect,
     disconnect,
-    writePackets,
+    writePatterns,
     writeCells, // 레거시 호환
     writeText,
     writePattern, // 레거시 호환

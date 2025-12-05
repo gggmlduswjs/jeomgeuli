@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { textToPackets, CMD_SINGLE, CMD_MULTI, CMD_CLEAR, CMD_TEST } from "@/lib/encodeHangul";
+import { textToPackets } from "@/lib/encodeHangul";
 
 /**
  * Web Serial API를 사용한 Arduino 직접 연결
@@ -116,7 +116,7 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
       // 포트 열기 시도
       try {
         console.log(`[Serial] 포트 열기 시도 (baudRate: ${baudRate})...`);
-        await newPort.open({ baudRate });
+      await newPort.open({ baudRate });
         console.log("[Serial] ✅ 포트 열기 성공");
       } catch (openError: any) {
         console.error("[Serial] 포트 열기 실패:", openError);
@@ -278,7 +278,7 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
     let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
     try {
       writer = activePort.writable.getWriter();
-      
+
       // 점자 셀을 바이트 배열로 변환
       const buffer = new Uint8Array(cells.length);
       cells.forEach((cell, idx) => {
@@ -308,10 +308,10 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
   }, [port, isConnected]);
 
   /**
-   * CMD/PATTERN 패킷 배열을 Serial로 전송 (2-byte 패킷 프로토콜)
-   * @param packets [(CMD, pattern), ...] 리스트
+   * 점자 패턴 배열을 Serial로 전송 (리팩토링: CMD 제거)
+   * @param patterns 패턴 배열 (0x00~0x3F)
    */
-  const writePackets = useCallback(async (packets: [number, number][]) => {
+  const writePatterns = useCallback(async (patterns: number[]) => {
     const activePort = port || globalSerialPort;
     const activeConnected = isConnected || globalIsConnected;
 
@@ -342,44 +342,36 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
     try {
       writer = activePort.writable.getWriter();
 
-      // 패킷 검증 및 상세 로그
-      console.log(`[Serial] 📦 전송할 패킷 (${packets.length}개):`);
-      packets.forEach(([cmd, pattern], idx) => {
-        const buffer = new Uint8Array([cmd & 0xFF, pattern & 0x3F]);
-        console.log(`[Serial]   패킷 ${idx + 1}: CMD=0x${cmd.toString(16).toUpperCase().padStart(2, '0')}, PATTERN=0x${pattern.toString(16).toUpperCase().padStart(2, '0')}, 바이트=[0x${buffer[0].toString(16).toUpperCase().padStart(2, '0')}, 0x${buffer[1].toString(16).toUpperCase().padStart(2, '0')}]`);
+      // 패턴 배열을 Uint8Array로 변환 (6-bit 마스킹)
+      const buffer = new Uint8Array(patterns.map(p => p & 0x3F));
+      
+      // 디버그 로그
+      console.log(`[Serial] 📦 전송할 패턴 (${patterns.length}개):`);
+      patterns.forEach((pattern, idx) => {
+        const masked = pattern & 0x3F;
+        console.log(`[Serial]   패턴 ${idx + 1}: 0x${masked.toString(16).toUpperCase().padStart(2, '0')}`);
       });
 
-      // 각 패킷을 2-byte Uint8Array로 변환하여 순차 전송
-      for (let i = 0; i < packets.length; i++) {
-        const [cmd, pattern] = packets[i];
-        const buffer = new Uint8Array([cmd & 0xFF, pattern & 0x3F]);
-        
-        // 디버그 로그
-        console.log(`[Serial] 전송 중 (${i + 1}/${packets.length}): CMD: 0x${cmd.toString(16).toUpperCase().padStart(2, '0')}, Pattern: 0x${pattern.toString(16).toUpperCase().padStart(2, '0')}, 바이트: [${buffer[0]}, ${buffer[1]}]`);
-        
-        await writer.write(buffer);
-        console.log(`[Serial] ✅ 패킷 ${i + 1} 전송 완료`);
-        
-        // 패킷 간 delay (Arduino 버퍼 처리 시간 확보)
-        // Web Serial API는 자동으로 flush되지만, Arduino 처리 시간을 위해 delay 추가
-        if (i < packets.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100)); // 50ms -> 100ms로 증가
-        } else {
-          // 마지막 패킷 후에도 약간의 delay (Arduino가 패킷을 처리할 시간 확보)
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-      }
+      // 한 번에 전송 (Arduino가 순차적으로 처리)
+      await writer.write(buffer);
       
-      console.log(`[Serial] ✅ ${packets.length}개 패킷 전송 완료`);
+      // 패턴 간 delay (Arduino 버퍼 처리 시간 확보)
+      if (patterns.length > 1) {
+        await new Promise(resolve => setTimeout(resolve, 50 * patterns.length));
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      console.log(`[Serial] ✅ ${patterns.length}개 패턴 전송 완료`);
     } catch (error: any) {
-      console.error("[Serial] 패킷 전송 실패:", error);
+      console.error("[Serial] 패턴 전송 실패:", error);
       setError(`전송 실패: ${error?.message || '알 수 없는 오류'}`);
       throw error;
     } finally {
       // writer가 있으면 반드시 해제
       if (writer) {
         try {
-          writer.releaseLock();
+        writer.releaseLock();
         } catch (releaseError) {
           console.warn("[Serial] Writer 해제 중 오류 (무시됨):", releaseError);
         }
@@ -400,68 +392,73 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
     try {
       console.log(`[Serial] 텍스트 변환 시작: "${text}"`);
       // encodeHangul을 사용하여 로컬 변환
-      const packets = await textToPackets(text);
-      console.log(`[Serial] 변환된 패킷 (${packets.length}개):`, packets);
+      const patterns = await textToPackets(text);
+      console.log(`[Serial] 변환된 패턴 (${patterns.length}개):`, patterns);
       
-      if (packets.length === 0) {
-        console.error("[Serial] ⚠️ 변환된 패킷이 없습니다!");
+      if (patterns.length === 0) {
+        console.error("[Serial] ⚠️ 변환된 패턴이 없습니다!");
         console.error("[Serial] 텍스트:", text);
         console.error("[Serial] 각 문자 분석:");
         const { encodeChar } = await import("@/lib/encodeHangul");
         for (let i = 0; i < text.length; i++) {
           const char = text[i];
-          const charPackets = await encodeChar(char);
-          console.error(`[Serial]   "${char}" (U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}) -> ${charPackets.length}개 패킷`);
-          if (charPackets.length === 0) {
-            console.error(`[Serial]     ❌ 이 문자는 패킷이 생성되지 않았습니다!`);
-          }
+          const charPatterns = await encodeChar(char);
+          console.error(`[Serial]   "${char}" (U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}) -> ${charPatterns.length}개 패턴`);
+          if (charPatterns.length === 0) {
+            console.error(`[Serial]     ❌ 이 문자는 패턴이 생성되지 않았습니다!`);
         }
-        setError("변환된 패킷이 없습니다. 콘솔을 확인하세요.");
+      }
+        setError("변환된 패턴이 없습니다. 콘솔을 확인하세요.");
         return;
       }
       
-      console.log(`[Serial] ${packets.length}개 패킷 전송 시작`);
-      await writePackets(packets);
-      console.log(`[Serial] ✅ 전송 완료: ${packets.length}개 패킷`);
+      console.log(`[Serial] ${patterns.length}개 패턴 전송 시작`);
+      await writePatterns(patterns);
+      console.log(`[Serial] ✅ 전송 완료: ${patterns.length}개 패턴`);
     } catch (error: any) {
       console.error("[Serial] ❌ 텍스트 전송 실패:", error);
       console.error("[Serial] 에러 스택:", error.stack);
       setError(`전송 실패: ${error?.message || '알 수 없는 오류'}`);
       throw error;
     }
-  }, [writePackets]);
+  }, [writePatterns]);
   
   // 전역 포트 사용 (반환값에서 사용)
   const activePort = port || globalSerialPort;
   const activeConnected = isConnected || globalIsConnected;
 
   /**
-   * 단일 패턴 전송 (CMD_SINGLE)
+   * 단일 패턴 전송
    */
   const sendSingle = useCallback(async (pattern: number) => {
-    await writePackets([[CMD_SINGLE, pattern & 0x3F]]);
-  }, [writePackets]);
+    await writePatterns([pattern & 0x3F]);
+  }, [writePatterns]);
 
   /**
-   * 다중 패턴 전송 (CMD_MULTI)
+   * 다중 패턴 전송
    */
-  const sendMulti = useCallback(async (pattern: number) => {
-    await writePackets([[CMD_MULTI, pattern & 0x3F]]);
-  }, [writePackets]);
+  const sendMulti = useCallback(async (patterns: number[]) => {
+    await writePatterns(patterns.map(p => p & 0x3F));
+  }, [writePatterns]);
 
   /**
-   * 모든 셀 클리어 (CMD_CLEAR)
+   * 모든 셀 클리어 (3개 셀 모두 0x00)
    */
   const sendClear = useCallback(async () => {
-    await writePackets([[CMD_CLEAR, 0x00]]);
-  }, [writePackets]);
+    await writePatterns([0x00, 0x00, 0x00]);
+  }, [writePatterns]);
 
   /**
-   * 테스트 모드 (CMD_TEST)
+   * 테스트 모드 (dot1~dot6 순차 출력)
    */
   const sendTest = useCallback(async () => {
-    await writePackets([[CMD_TEST, 0x00]]);
-  }, [writePackets]);
+    const testPatterns = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20]; // dot1~dot6
+    for (const pattern of testPatterns) {
+      await writePatterns([pattern]);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+    }
+    await writePatterns([0x00]); // 마지막에 클리어
+  }, [writePatterns]);
 
   /**
    * 간단한 고정 패턴 전송 (디버깅용)
@@ -470,8 +467,8 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
   const sendTestPattern = useCallback(async (pattern: number) => {
     const testPattern = pattern & 0x3F;
     console.log(`[Serial] 테스트 패턴 전송: 0x${testPattern.toString(16).toUpperCase().padStart(2, '0')}`);
-    await writePackets([[CMD_SINGLE, testPattern]]);
-  }, [writePackets]);
+    await writePatterns([testPattern]);
+  }, [writePatterns]);
 
   return {
     isConnected: activeConnected,
@@ -480,7 +477,7 @@ export function useBrailleSerial(config: BrailleSerialConfig = {}) {
     error,
     connect,
     disconnect,
-    writePackets,
+    writePatterns,
     writeCells, // 레거시 호환
     writeText,
     sendSingle,
