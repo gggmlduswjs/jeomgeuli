@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, Search, RotateCcw, Type } from 'lucide-react';
 import AppShellMobile from '../components/ui/AppShellMobile';
 import SpeechBar from '../components/input/SpeechBar';
@@ -12,8 +12,9 @@ import ToastA11y from '../components/system/ToastA11y';
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { speak, stop: stopTTS } = useTTS();
-  const { start: startSTT, stop: stopSTT, isListening, transcript } = useSTT();
+  const { start: startSTT, stop: stopSTT, isListening, transcript, alternatives } = useSTT();
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   
@@ -113,11 +114,11 @@ export default function Home() {
     },
   });
 
-  // 음성 명령 처리
+  // 음성 명령 처리 (Alternatives 및 Context 활용)
   useEffect(() => {
     if (!transcript) return;
-    onSpeech(transcript);
-  }, [transcript, onSpeech]);
+    onSpeech(transcript, alternatives, location.pathname);
+  }, [transcript, alternatives, onSpeech, location.pathname]);
 
   const showToastMessage = (message: string) => {
     setToastMessage(message);

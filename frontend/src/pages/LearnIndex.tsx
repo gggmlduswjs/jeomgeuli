@@ -1,16 +1,19 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import AppShellMobile from "../components/ui/AppShellMobile";
 import SpeechBar from "../components/input/SpeechBar";
 import useTTS from "../hooks/useTTS";
 import useSTT from "../hooks/useSTT";
-import useVoiceCommands from "../hooks/useVoiceCommands";
+import useVoiceCommands, { RecognitionResult } from "../hooks/useVoiceCommands";
 import { useVoiceStore } from '../store/voice';
+import { correctMisrecognition } from '../lib/voice/MisrecognitionMap';
+import VoiceFeedbackService from '../services/VoiceFeedbackService';
 
 export default function LearnIndex() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { speak, stop: stopTTS } = useTTS();
-  const { start: startSTT, stop: stopSTT, isListening, transcript } = useSTT();
+  const { start: startSTT, stop: stopSTT, isListening, transcript, alternatives } = useSTT();
 
   // 페이지 진입 안내 (원치 않으면 이 useEffect 제거해도 됨)
   useEffect(() => {
@@ -38,95 +41,112 @@ export default function LearnIndex() {
       stopSTT();
     },
     back: handleBack,
-    learn: () => {
-      // "학습" 명령어는 하위 메뉴로 이동하도록 변경
-      // "이미 점자 학습 메뉴입니다" 대신 자모 학습으로 이동
-      stopTTS();
-      navigate('/learn/char');
-      speak('자모 학습으로 이동합니다.');
-      stopSTT();
-    },
-    // 각 항목 선택 (더 유연한 매칭)
-    speak: (text: string) => {
-      let normalized = text.toLowerCase().trim();
-      
-      // 오인식 패턴 보정
-      const misrecognitionMap: Record<string, string> = {
-        "자무": "자모",
-        "자모.": "자모",
-        "참호": "자모",
-        "단어.": "단어",
-        "다워": "단어",
-        "문장.": "문장",
+    // learn 핸들러 제거 - Home에서만 처리하도록
+    // 각 항목 선택 (더 유연한 매칭 - Alternatives 활용, 최적화)
+    speak: (text: string, alts?: RecognitionResult[]) => {
+      // 매칭 함수 분리 (재사용)
+      const matchAndNavigate = (candidateText: string, confidence: number = 1.0): boolean => {
+        const normalized = correctMisrecognition(candidateText.toLowerCase().trim());
+        
+        // 자모 학습
+        if (/(자모|자음|모음|자무|참호|참오|잠오|사모)/.test(normalized) || 
+            normalized.startsWith('자') || 
+            normalized.includes('자모') || 
+            normalized.includes('자음') || 
+            normalized.includes('모음') ||
+            (normalized.includes('자') && normalized.length <= 4) ||
+            (normalized.length <= 2 && normalized[0] === '자')) {
+          if (normalized !== '자모' && candidateText !== '자모') {
+            VoiceFeedbackService.logMisrecognition(
+              candidateText,
+              '자모',
+              location.pathname,
+              confidence
+            );
+          }
+          stopTTS();
+          navigate('/learn/char');
+          stopSTT();
+          return true;
+        }
+        
+        // 단어 학습
+        if (/(단어|워드|다워|다오|암호)/.test(normalized) || 
+            normalized.startsWith('단') || 
+            normalized.startsWith('다') ||
+            normalized.includes('단어') ||
+            normalized.includes('다워') ||
+            normalized.includes('암호') ||
+            (normalized.length <= 2 && (normalized[0] === '단' || normalized[0] === '다'))) {
+          stopTTS();
+          navigate('/learn/word');
+          stopSTT();
+          return true;
+        }
+        
+        // 문장 학습
+        if (/(문장|센턴스)/.test(normalized) || 
+            normalized.startsWith('문') || 
+            normalized.includes('문장') ||
+            (normalized.length <= 2 && normalized[0] === '문')) {
+          stopTTS();
+          navigate('/learn/sentence');
+          stopSTT();
+          return true;
+        }
+        
+        // 자유 변환
+        if (/(자유\s*변환|자유변환|변환|점자변환|점자\s*변환|편환)/.test(normalized) || 
+            normalized.includes('변환') || 
+            normalized.includes('자유') ||
+            normalized.includes('편환')) {
+          stopTTS();
+          navigate('/learn/free');
+          stopSTT();
+          return true;
+        }
+        
+        // 복습하기
+        if (/(복습|리뷰|다시\s*보기|다시보기)/.test(normalized) || 
+            normalized.startsWith('복') || 
+            normalized.includes('복습') || 
+            normalized.includes('리뷰') ||
+            normalized.includes('다시') ||
+            (normalized.length <= 2 && normalized[0] === '복')) {
+          stopTTS();
+          navigate('/review');
+          stopSTT();
+          return true;
+        }
+        
+        return false;
       };
       
-      for (const [wrong, correct] of Object.entries(misrecognitionMap)) {
-        if (normalized.includes(wrong)) {
-          normalized = normalized.replace(wrong, correct);
-        }
+      // 기본 텍스트를 먼저 시도 (가장 빠름 - 대부분의 경우 여기서 매칭됨)
+      if (matchAndNavigate(text, 1.0)) {
+        return;
       }
       
-      // 자모 학습 (매우 관대한 매칭)
-      if (/(자모|자음|모음|자무|참호)/.test(normalized) || 
-          normalized.startsWith('자') || 
-          normalized.includes('자모') || 
-          normalized.includes('자음') || 
-          normalized.includes('모음') ||
-          (normalized.length <= 3 && normalized[0] === '자')) {
-        stopTTS();
-        navigate('/learn/char');
-        stopSTT();
-        return;
-      }
-      // 단어 학습 (매우 관대한 매칭)
-      if (/(단어|워드|다워)/.test(normalized) || 
-          normalized.startsWith('단') || 
-          normalized.includes('단어') ||
-          (normalized.length <= 3 && normalized[0] === '단')) {
-        stopTTS();
-        navigate('/learn/word');
-        stopSTT();
-        return;
-      }
-      // 문장 학습 (매우 관대한 매칭)
-      if (/(문장|센턴스)/.test(normalized) || 
-          normalized.startsWith('문') || 
-          normalized.includes('문장') ||
-          (normalized.length <= 3 && normalized[0] === '문')) {
-        stopTTS();
-        navigate('/learn/sentence');
-        stopSTT();
-        return;
-      }
-      // 자유 변환 (매우 관대한 매칭)
-      if (/(자유\s*변환|자유변환|변환)/.test(normalized) || 
-          normalized.includes('변환') || 
-          normalized.includes('자유')) {
-        stopTTS();
-        navigate('/learn/free');
-        stopSTT();
-        return;
-      }
-      // 복습하기 (매우 관대한 매칭)
-      if (/(복습|리뷰|다시\s*보기)/.test(normalized) || 
-          normalized.startsWith('복') || 
-          normalized.includes('복습') || 
-          normalized.includes('리뷰')) {
-        stopTTS();
-        navigate('/review');
-        stopSTT();
-        return;
+      // 기본 텍스트에서 매칭 안 되면 alternatives 시도 (confidence 높은 순)
+      if (alts && alts.length > 0) {
+        const sorted = [...alts].sort((a, b) => b.confidence - a.confidence);
+        for (const alt of sorted) {
+          if (matchAndNavigate(alt.transcript, alt.confidence)) {
+            return;
+          }
+        }
       }
     },
   });
 
-  // 음성 명령 처리 (transcript 감지)
+  // 음성 명령 처리 (transcript 감지 - Alternatives 활용)
   useEffect(() => {
     if (!transcript) return;
-    onSpeech(transcript);
+    // alternatives를 함께 전달하여 confidence 기반 필터링
+    onSpeech(transcript, alternatives, location.pathname);
     // 처리 후 transcript 초기화 - 이전 페이지의 transcript가 남지 않도록
     useVoiceStore.getState().resetTranscript();
-  }, [transcript, onSpeech]);
+  }, [transcript, alternatives, onSpeech, location.pathname]);
 
   return (
     <AppShellMobile title="점자 학습" showBackButton onBack={handleBack}>

@@ -1,215 +1,157 @@
-/*
- * 점글이 3셀 펌웨어 통합 테스트
- * 
- * 이 코드는 펌웨어의 패킷 처리 기능을 테스트합니다.
- * Serial Monitor에서 다음 명령을 입력하여 테스트할 수 있습니다:
- * 
- * - test_single: 단일 셀 모드 테스트
- * - test_multi: 다중 셀 모드 테스트
- * - test_clear: 클리어 명령 테스트
- * - test_test: 테스트 모드 명령 테스트
- * - test_all: 모든 테스트 실행
- */
+int dataPin = 2;
+int latchPin = 3;
+int clockPin = 4;
+int no_module = 3;
 
-const int DATA_PIN = 2;
-const int LATCH_PIN = 3;
-const int CLOCK_PIN = 4;
+braille bra(dataPin, latchPin, clockPin, no_module);
 
-#define CMD_SINGLE_CELL 0x80
-#define CMD_MULTI_CELL  0x81
-#define CMD_CLEAR       0x82
-#define CMD_TEST        0x83
+// 버퍼 및 문자 저장 변수
+char string_buffer[100];
+char string_buffer_serial[100][4];
+int str_char_count = 0;
 
-byte cellBuf[3] = {0, 0, 0};
+int last_cho = 0, last_jung = 0, last_jong = 0;
+
+byte hangul_cho[19] = {
+  0b00010000, 0b00010000, 0b00110000, 0b00011000, 0b00011000,
+  0b00000100, 0b00100100, 0b00010100, 0b00010100, 0b00000001,
+  0b00000001, 0b00111100, 0b00010001, 0b00010001, 0b00000101,
+  0b00111000, 0b00101100, 0b00110100, 0b00011100
+};
+
+byte hangul2_cho[19] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
+
+byte hangul_jung[21] = {
+  0b00101001, 0b00101110, 0b00010110, 0b00010110, 0b00011010,
+  0b00110110, 0b00100101, 0b00010010, 0b00100011, 0b00101011,
+  0b00101011, 0b00110111, 0b00010011, 0b00110010, 0b00111010,
+  0b00111010, 0b00110010, 0b00110001, 0b00011001, 0b00011101, 0b00100110
+};
+
+byte hangul2_jung[21] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20};
+
+byte hangul_jong[28] = {
+  0b00000000, 0b00100000, 0b00100000, 0b00100000, 0b00001100, 0b00001100,
+  0b00001100, 0b00000110, 0b00001000, 0b00001000, 0b00001000, 0b00001000,
+  0b00001000, 0b00001000, 0b00001000, 0b00001000, 0b00001001, 0b00101000,
+  0b00101000, 0b00000010, 0b00000010, 0b00001111, 0b00100010, 0b00001010,
+  0b00001110, 0b00001011, 0b00001101, 0b00000111
+};
+
+byte hangul2_jong[28] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27};
+
+byte ascii_data[127] = {
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00001110, 0b00001011, 0b00000000, 0b00000000, 0b00010010, 0b00000000, 0b00000000,
+  0b00001011, 0b00000001, 0b00100001, 0b00001001, 0b00000100, 0b00000110, 0b00001101, 0b00010101,
+  0b00011100, 0b00100000, 0b00101000, 0b00110000, 0b00110100, 0b00100100, 0b00111000, 0b00111100,
+  0b00101100, 0b00011000, 0b00000100, 0b00000101, 0b00000100, 0b00001100, 0b00000111, 0b00001011,
+  0b00000000, 0b00100000, 0b00101000, 0b00110000, 0b00110100, 0b00100100, 0b00111000, 0b00111100,
+  0b00101100, 0b00011000, 0b00011100, 0b00100010, 0b00101010, 0b00110010, 0b00110110, 0b00100110,
+  0b00111010, 0b00111110, 0b00101110, 0b00011010, 0b00011110, 0b00100011, 0b00101011, 0b00011101,
+  0b00110011, 0b00110111, 0b00100111, 0b00001011, 0b00010000, 0b00000101, 0b00000000, 0b00000011
+};
 
 void setup() {
-  Serial.begin(115200);
-  
-  pinMode(DATA_PIN, OUTPUT);
-  pinMode(LATCH_PIN, OUTPUT);
-  pinMode(CLOCK_PIN, OUTPUT);
-  
-  digitalWrite(LATCH_PIN, LOW);
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  
-  Serial.println("========================================");
-  Serial.println("  점글이 3셀 펌웨어 통합 테스트");
-  Serial.println("========================================");
-  Serial.println();
-  Serial.println("사용 가능한 명령:");
-  Serial.println("  test_single - 단일 셀 모드 테스트");
-  Serial.println("  test_multi  - 다중 셀 모드 테스트");
-  Serial.println("  test_clear  - 클리어 명령 테스트");
-  Serial.println("  test_test   - 테스트 모드 명령 테스트");
-  Serial.println("  test_all    - 모든 테스트 실행");
-  Serial.println();
-  
-  // 초기화: 모든 셀 OFF
-  setBraille3Cells(0x00, 0x00, 0x00);
-  delay(100);
+  Serial.begin(9600);
+  bra.begin();
+  delay(1000);
+  bra.all_off();
+  bra.refresh();
 }
 
 void loop() {
-  // 펌웨어의 실제 패킷 처리 로직 테스트
-  if (Serial.available() >= 2) {
-    uint8_t cmd = Serial.read();
-    uint8_t pattern = Serial.read() & 0x3F;
-    
-    processPacket(cmd, pattern);
-  }
-  
-  // 명령어 처리
-  if (Serial.available() > 0) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    command.toLowerCase();
-    
-    if (command == "test_single") {
-      testSingleCell();
-    } else if (command == "test_multi") {
-      testMultiCell();
-    } else if (command == "test_clear") {
-      testClear();
-    } else if (command == "test_test") {
-      testTestMode();
-    } else if (command == "test_all") {
-      testAll();
+  if (Serial.available()) {
+    String str = Serial.readStringUntil('\n');
+    str.replace("\r", "");
+    Serial.println("입력됨: " + str);
+    strcpy(string_buffer, str.c_str());
+
+    int ind = 0, len = strlen(string_buffer), index = 0;
+    while (ind < len) {
+      int bytes = get_char_byte(string_buffer + ind);
+      if (bytes == 1) {
+        string_buffer_serial[index][0] = *(string_buffer + ind);
+        string_buffer_serial[index][1] = 0;
+        index++;
+      } else if (bytes == 3) {
+        string_buffer_serial[index][0] = *(string_buffer + ind);
+        string_buffer_serial[index][1] = *(string_buffer + ind + 1);
+        string_buffer_serial[index][2] = *(string_buffer + ind + 2);
+        string_buffer_serial[index][3] = 0;
+        index++;
+      }
+      ind += bytes;
     }
+
+    str_char_count = index;
+
+    for (int i = 0; i < str_char_count; i++) {
+      if (string_buffer_serial[i][1] == 0) {
+        int code = string_buffer_serial[i][0];
+        ascii_braille(code);
+        delay(300);
+        bra.all_off();
+        bra.refresh();
+        delay(100);
+        Serial.print("ASCII 출력: ");
+        Serial.println(ascii_data[code], BIN);
+      } else {
+        unsigned int cho, jung, jong;
+        split_han_cho_jung_jong(string_buffer_serial[i][0], string_buffer_serial[i][1], string_buffer_serial[i][2], cho, jung, jong);
+        last_cho = cho;
+        last_jung = jung;
+        last_jong = jong;
+        han_braille(cho, jung, jong);
+        delay(300);
+        bra.all_off();
+        bra.refresh();
+        delay(100);
+      }
+    }
+    Serial.println();
   }
 }
 
-void processPacket(uint8_t cmd, uint8_t pattern) {
-  if (cmd == CMD_SINGLE_CELL) {
-    cellBuf[0] = pattern;
-    cellBuf[1] = 0x00;
-    cellBuf[2] = 0x00;
-    Serial.print("CMD_SINGLE: Pattern 0x");
-    if (pattern < 0x10) Serial.print("0");
-    Serial.println(pattern, HEX);
-  } else if (cmd == CMD_MULTI_CELL) {
-    cellBuf[2] = cellBuf[1];
-    cellBuf[1] = cellBuf[0];
-    cellBuf[0] = pattern;
-    Serial.print("CMD_MULTI: Pattern 0x");
-    if (pattern < 0x10) Serial.print("0");
-    Serial.println(pattern, HEX);
-  } else if (cmd == CMD_CLEAR) {
-    cellBuf[0] = 0x00;
-    cellBuf[1] = 0x00;
-    cellBuf[2] = 0x00;
-    Serial.println("CMD_CLEAR");
-  } else if (cmd == CMD_TEST) {
-    Serial.println("CMD_TEST");
-    // 테스트 모드는 실제 펌웨어에서 처리
+void han_braille(int index1, int index2, int index3) {
+  bra.all_off();
+  for (int i = 0; i < 6; i++) {
+    if (hangul_cho[index1] & (1 << (5 - i))) bra.on(0, i);
+    if (hangul_jung[index2] & (1 << (5 - i))) bra.on(1, i);
+    if (hangul_jong[index3] & (1 << (5 - i))) bra.on(2, i);
   }
-  
-  setBraille3Cells(cellBuf[0], cellBuf[1], cellBuf[2]);
-  
-  Serial.print("Buffer: [0x");
-  if (cellBuf[0] < 0x10) Serial.print("0");
-  Serial.print(cellBuf[0], HEX);
-  Serial.print(", 0x");
-  if (cellBuf[1] < 0x10) Serial.print("0");
-  Serial.print(cellBuf[1], HEX);
-  Serial.print(", 0x");
-  if (cellBuf[2] < 0x10) Serial.print("0");
-  Serial.print(cellBuf[2], HEX);
-  Serial.println("]");
+  bra.refresh();
 }
 
-void testSingleCell() {
-  Serial.println();
-  Serial.println("=== 단일 셀 모드 테스트 ===");
-  
-  // 패턴 0x08 (dot 4) 전송
-  Serial.println("패턴 0x08 전송 (CMD_SINGLE)...");
-  processPacket(CMD_SINGLE_CELL, 0x08);
-  delay(2000);
-  
-  Serial.println("테스트 완료");
-  Serial.println();
-}
-
-void testMultiCell() {
-  Serial.println();
-  Serial.println("=== 다중 셀 모드 테스트 ===");
-  
-  // 여러 패턴 순차 전송
-  uint8_t patterns[] = {0x08, 0x23, 0x15};
-  for (int i = 0; i < 3; i++) {
-    Serial.print("패턴 0x");
-    if (patterns[i] < 0x10) Serial.print("0");
-    Serial.print(patterns[i], HEX);
-    Serial.println(" 전송 (CMD_MULTI)...");
-    processPacket(CMD_MULTI_CELL, patterns[i]);
-    delay(2000);
+void ascii_braille(int code) {
+  bra.all_off();
+  for (int i = 0; i < 6; i++) {
+    if (ascii_data[code] & (1 << (5 - i))) bra.on(0, i);
   }
-  
-  Serial.println("테스트 완료");
-  Serial.println();
+  bra.refresh();
 }
 
-void testClear() {
-  Serial.println();
-  Serial.println("=== 클리어 명령 테스트 ===");
-  
-  // 먼저 패턴 표시
-  processPacket(CMD_SINGLE_CELL, 0x08);
-  delay(1000);
-  
-  // 클리어
-  Serial.println("CMD_CLEAR 전송...");
-  processPacket(CMD_CLEAR, 0x00);
-  delay(2000);
-  
-  Serial.println("테스트 완료");
-  Serial.println();
+unsigned char get_char_byte(char *pos) {
+  char val = *pos;
+  if ((val & 0b10000000) == 0) return 1;
+  else if ((val & 0b11100000) == 0b11000000) return 2;
+  else if ((val & 0b11110000) == 0b11100000) return 3;
+  else if ((val & 0b11111000) == 0b11110000) return 4;
+  else if ((val & 0b11111100) == 0b11111000) return 5;
+  else return 6;
 }
 
-void testTestMode() {
-  Serial.println();
-  Serial.println("=== 테스트 모드 명령 테스트 ===");
-  Serial.println("CMD_TEST 전송...");
-  Serial.println("(실제 테스트 모드는 펌웨어에서 처리)");
-  processPacket(CMD_TEST, 0x00);
-  delay(2000);
-  Serial.println("테스트 완료");
-  Serial.println();
+void split_han_cho_jung_jong(char byte1, char byte2, char byte3, unsigned int &cho, unsigned int &jung, unsigned int &jong) {
+  unsigned int utf16 = (byte1 & 0b00001111) << 12 | (byte2 & 0b00111111) << 6 | (byte3 & 0b00111111);
+  unsigned int val = utf16 - 0xAC00;
+  unsigned char _jong = val % 28;
+  unsigned char _jung = (val % (28 * 21)) / 28;
+  unsigned char _cho = val / (28 * 21);
+  cho = jung = jong = 0;
+  for (int i = 0; i < 19; i++) if (_cho == hangul2_cho[i]) cho = i;
+  for (int i = 0; i < 21; i++) if (_jung == hangul2_jung[i]) jung = i;
+  for (int i = 0; i < 28; i++) if (_jong == hangul2_jong[i]) jong = i;
 }
-
-void testAll() {
-  Serial.println();
-  Serial.println("========================================");
-  Serial.println("  전체 테스트 시작");
-  Serial.println("========================================");
-  Serial.println();
-  
-  testSingleCell();
-  delay(1000);
-  testMultiCell();
-  delay(1000);
-  testClear();
-  delay(1000);
-  testTestMode();
-  
-  Serial.println("========================================");
-  Serial.println("  전체 테스트 완료");
-  Serial.println("========================================");
-  Serial.println();
-}
-
-void setBraille3Cells(byte cell1, byte cell2, byte cell3) {
-  cell1 = cell1 & 0x3F;
-  cell2 = cell2 & 0x3F;
-  cell3 = cell3 & 0x3F;
-  
-  digitalWrite(LATCH_PIN, LOW);
-  shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, cell3);
-  shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, cell2);
-  shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, cell1);
-  digitalWrite(LATCH_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(LATCH_PIN, LOW);
-}
-

@@ -1,162 +1,229 @@
-/*
- * 점글이 Arduino UNO 펌웨어 (3셀 버전) - 단순 드라이버 모드
- * JY-SOFT 스마트 점자 모듈 × 3 제어
- * 
- * 리팩토링: "Dumb Hardware, Smart Software" 원칙
- * - 웹앱에서 모든 로직 처리 (한글 분해, 점자 변환)
- * - 아두이노는 받은 패턴을 그대로 하드웨어로 전송만 수행
- * 
- * 프로토콜: CMD 제거, 순수 패턴 배열만 전송
- * - 웹앱 → 아두이노: [pattern1, pattern2, pattern3, ...]
- * - 각 패턴은 0x00~0x3F (6-bit)
- * 
- * 테스트 코드로 확인된 설정:
- * - shiftOut 방향: LSBFIRST (확인됨)
- * - 셀 전송 순서: 셀3 → 셀2 → 셀1 (왼쪽 → 중간 → 오른쪽 표시)
- * 
- * 핀맵 (불변):
- * - DATA: D2
- * - LATCH: D3
- * - CLOCK: D4
- * 
- * 3셀 버퍼 구조:
- * - 셀1: 가장 최근 패턴 (오른쪽에 표시)
- * - 셀2: 이전 패턴 (중간에 표시)
- * - 셀3: 그 이전 패턴 (왼쪽에 표시)
- */
+#include "braille.h"
 
-// 핀 정의 (HARDWARE_SPEC.md에 명시된 값 - 불변)
-const int DATA_PIN = 2;   // DATA 핀
-const int LATCH_PIN = 3;  // LATCH 핀
-const int CLOCK_PIN = 4;  // CLOCK 핀
+int dataPin = 2;
+int latchPin = 3;
+int clockPin = 4;
+int no_module = 3;
 
-// 3셀 버퍼 (셀1, 셀2, 셀3)
-byte cellBuf[3] = {0, 0, 0};
+braille bra(dataPin, latchPin, clockPin, no_module);
 
-// 디버그 모드 (Serial 출력 제어)
-const bool DEBUG_MODE = true;  // false로 설정하면 디버그 출력 비활성화
+// 버퍼 및 문자 저장 변수
+char string_buffer[100];
+char string_buffer_serial[100][4];
+int str_char_count = 0;
+int last_cho = 0, last_jung = 0, last_jong = 0;
+
+byte hangul_cho[19] = {
+  0b00010000, 0b00010000, 0b00110000, 0b00011000, 0b00011000,
+  0b00000100, 0b00100100, 0b00010100, 0b00010100, 0b00000001,
+  0b00000001, 0b00111100, 0b00010001, 0b00010001, 0b00000101,
+  0b00111000, 0b00101100, 0b00110100, 0b00011100
+};
+
+byte hangul2_cho[19] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18};
+
+byte hangul_jung[21] = {
+  0b00101001, 0b00101110, 0b00010110, 0b00010110, 0b00011010,
+  0b00110110, 0b00100101, 0b00010010, 0b00100011, 0b00101011,
+  0b00101011, 0b00110111, 0b00010011, 0b00110010, 0b00111010,
+  0b00111010, 0b00110010, 0b00110001, 0b00011001, 0b00011101, 0b00100110
+};
+
+byte hangul2_jung[21] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20};
+
+byte hangul_jong[28] = {
+  0b00000000, 0b00100000, 0b00100000, 0b00100000, 0b00001100, 0b00001100,
+  0b00001100, 0b00000110, 0b00001000, 0b00001000, 0b00001000, 0b00001000,
+  0b00001000, 0b00001000, 0b00001000, 0b00001000, 0b00001001, 0b00101000,
+  0b00101000, 0b00000010, 0b00000010, 0b00001111, 0b00100010, 0b00001010,
+  0b00001110, 0b00001011, 0b00001101, 0b00000111
+};
+
+byte hangul2_jong[28] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27};
+
+byte ascii_data[127] = {
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000000,
+  0b00000000, 0b00001110, 0b00001011, 0b00000000, 0b00000000, 0b00010010, 0b00000000, 0b00000000,
+  0b00001011, 0b00000001, 0b00100001, 0b00001001, 0b00000100, 0b00000110, 0b00001101, 0b00010101,
+  0b00011100, 0b00100000, 0b00101000, 0b00110000, 0b00110100, 0b00100100, 0b00111000, 0b00111100,
+  0b00101100, 0b00011000, 0b00000100, 0b00000101, 0b00000100, 0b00001100, 0b00000111, 0b00001011,
+  0b00000000, 0b00100000, 0b00101000, 0b00110000, 0b00110100, 0b00100100, 0b00111000, 0b00111100,
+  0b00101100, 0b00011000, 0b00011100, 0b00100010, 0b00101010, 0b00110010, 0b00110110, 0b00100110,
+  0b00111010, 0b00111110, 0b00101110, 0b00011010, 0b00011110, 0b00100011, 0b00101011, 0b00011101,
+  0b00110011, 0b00110111, 0b00100111, 0b00001011, 0b00010000, 0b00000101, 0b00000000, 0b00000011
+};
 
 void setup() {
-  Serial.begin(115200);
-  
-  // 핀 모드 설정
-  pinMode(DATA_PIN, OUTPUT);
-  pinMode(LATCH_PIN, OUTPUT);
-  pinMode(CLOCK_PIN, OUTPUT);
-  
-  // 초기 상태
-  digitalWrite(LATCH_PIN, LOW);
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  
-  if (DEBUG_MODE) {
-    Serial.println("Braille 3-Cell Firmware Started (Driver Mode)");
-    Serial.println("Protocol: Raw pattern array (no CMD)");
-    Serial.println("LSBFIRST mode - Cell order: 3->2->1 (Left->Middle->Right)");
-    Serial.println("Waiting for patterns...");
-  }
-  
-  // 초기화: 모든 셀 OFF
-  setBraille3Cells(0x00, 0x00, 0x00);
-  delay(100);
+  Serial.begin(9600);
+  bra.begin();
+  delay(1000);
+  bra.all_off();
+  bra.refresh();
 }
 
 void loop() {
-  // 웹앱에서 보내는 데이터: 순수 패턴 배열 [pattern1, pattern2, pattern3, ...]
-  // 각 패턴은 0x00~0x3F (6-bit)
-  // CMD 없이 패턴만 전송
-  
-  if (Serial.available() > 0) {
-    // 받은 바이트를 패턴으로 처리 (6-bit 마스킹)
-    uint8_t pattern = Serial.read() & 0x3F;
+  if (Serial.available()) {
+    String str = Serial.readStringUntil('\n');
+    str.replace("\r", "");
+    str.trim();
     
-    if (DEBUG_MODE) {
-      Serial.print("📥 Pattern received: 0x");
-      if (pattern < 0x10) Serial.print("0");
-      Serial.print(pattern, HEX);
-      Serial.print(" [dots: ");
-      bool first = true;
-      for (int i = 0; i < 6; i++) {
-        if (pattern & (1 << i)) {
-          if (!first) Serial.print(", ");
-          Serial.print(i + 1);
-          first = false;
-        }
+    // 테스트 명령 처리
+    if (str == "test") {
+      test_all_dots();
+      return;
+    }
+    if (str == "all") {
+      test_all_cells_all_dots();
+      delay(2000);
+      bra.all_off();
+      bra.refresh();
+      return;
+    }
+    if (str.startsWith("cell")) {
+      int cellNum = str.charAt(4) - '0';
+      if (cellNum >= 1 && cellNum <= 3) {
+        test_cell_all(cellNum - 1);
+        delay(2000);
+        bra.all_off();
+        bra.refresh();
       }
-      if (first) Serial.print("none");
-      Serial.print("]");
+      return;
     }
     
-    // 버퍼 이동: 새 패턴은 셀1에, 기존 패턴은 오른쪽으로 이동
-    cellBuf[2] = cellBuf[1];  // 셀2 → 셀3
-    cellBuf[1] = cellBuf[0];  // 셀1 → 셀2
-    cellBuf[0] = pattern;     // 새 패턴 → 셀1
+    // 기존 문자 입력 처리
+    Serial.println("입력됨: " + str);
     
-    if (DEBUG_MODE) {
-      Serial.print(" -> Buffer: [0x");
-      if (cellBuf[0] < 0x10) Serial.print("0");
-      Serial.print(cellBuf[0], HEX);
-      Serial.print(", 0x");
-      if (cellBuf[1] < 0x10) Serial.print("0");
-      Serial.print(cellBuf[1], HEX);
-      Serial.print(", 0x");
-      if (cellBuf[2] < 0x10) Serial.print("0");
-      Serial.print(cellBuf[2], HEX);
-      Serial.println("]");
+    strcpy(string_buffer, str.c_str());
+    int ind = 0, len = strlen(string_buffer), index = 0;
+    
+    while (ind < len) {
+      int bytes = get_char_byte(string_buffer + ind);
+      if (bytes == 1) {
+        string_buffer_serial[index][0] = *(string_buffer + ind);
+        string_buffer_serial[index][1] = 0;
+        index++;
+      } else if (bytes == 3) {
+        string_buffer_serial[index][0] = *(string_buffer + ind);
+        string_buffer_serial[index][1] = *(string_buffer + ind + 1);
+        string_buffer_serial[index][2] = *(string_buffer + ind + 2);
+        string_buffer_serial[index][3] = 0;
+        index++;
+      }
+      ind += bytes;
     }
     
-    // 하드웨어 업데이트
-    setBraille3Cells(cellBuf[0], cellBuf[1], cellBuf[2]);
+    str_char_count = index;
+    
+    for (int i = 0; i < str_char_count; i++) {
+      if (string_buffer_serial[i][1] == 0) {
+        int code = string_buffer_serial[i][0];
+        ascii_braille(code);
+        delay(300);
+        bra.all_off();
+        bra.refresh();
+        delay(100);
+        Serial.print("ASCII 출력: ");
+        Serial.println(ascii_data[code], BIN);
+      } else {
+        unsigned int cho, jung, jong;
+        split_han_cho_jung_jong(string_buffer_serial[i][0], string_buffer_serial[i][1], string_buffer_serial[i][2], cho, jung, jong);
+        last_cho = cho;
+        last_jung = jung;
+        last_jong = jong;
+        han_braille(cho, jung, jong);
+        delay(300);
+        bra.all_off();
+        bra.refresh();
+        delay(100);
+      }
+    }
+    
+    Serial.println();
   }
 }
 
-/**
- * 3셀 점자 패턴을 Shift Register로 전송
- * 
- * 테스트 코드로 확인된 설정:
- * - shiftOut 방향: LSBFIRST (확인됨)
- * - 전송 순서: 셀3 → 셀2 → 셀1 (왼쪽 → 중간 → 오른쪽 표시)
- * 
- * @param cell1 셀1 패턴 (오른쪽에 표시)
- * @param cell2 셀2 패턴 (중간에 표시)
- * @param cell3 셀3 패턴 (왼쪽에 표시)
- */
-void setBraille3Cells(byte cell1, byte cell2, byte cell3) {
-  // 패턴 유효성 검사 (6-bit 범위)
-  cell1 = cell1 & 0x3F;  // 상위 2비트 마스킹
-  cell2 = cell2 & 0x3F;
-  cell3 = cell3 & 0x3F;
-  
-  if (DEBUG_MODE) {
-    Serial.print("setBraille3Cells: [0x");
-    if (cell1 < 0x10) Serial.print("0");
-    Serial.print(cell1, HEX);
-    Serial.print(", 0x");
-    if (cell2 < 0x10) Serial.print("0");
-    Serial.print(cell2, HEX);
-    Serial.print(", 0x");
-    if (cell3 < 0x10) Serial.print("0");
-    Serial.print(cell3, HEX);
-    Serial.println("]");
+void han_braille(int index1, int index2, int index3) {
+  bra.all_off();
+  for (int i = 0; i < 6; i++) {
+    if (hangul_cho[index1] & (1 << (5 - i))) bra.on(0, i);
+    if (hangul_jung[index2] & (1 << (5 - i))) bra.on(1, i);
+    if (hangul_jong[index3] & (1 << (5 - i))) bra.on(2, i);
   }
-  
-  digitalWrite(LATCH_PIN, LOW);
-  
-  // LSBFIRST 사용 (테스트 코드로 확인됨)
-  // 셀3 → 셀2 → 셀1 순서로 전송 (왼쪽 → 중간 → 오른쪽 표시)
-  shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, cell3);  // 셀3 먼저 (왼쪽)
-  shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, cell2);  // 셀2 (중간)
-  shiftOut(DATA_PIN, CLOCK_PIN, LSBFIRST, cell1);  // 셀1 마지막 (오른쪽)
-  
-  digitalWrite(LATCH_PIN, HIGH);
-  delayMicroseconds(10); // 짧은 대기 (안정성)
-  digitalWrite(LATCH_PIN, LOW);
-  
-  if (DEBUG_MODE) {
-    Serial.println("Hardware update completed");
-  }
+  bra.refresh();
 }
 
-// 주의: 문자→점자 변환은 프론트엔드에서 처리되므로
-// Arduino 펌웨어는 패턴을 그대로 받아서 디스플레이하는 역할만 수행합니다.
+void ascii_braille(int code) {
+  bra.all_off();
+  for (int i = 0; i < 6; i++) {
+    if (ascii_data[code] & (1 << (5 - i))) bra.on(0, i);
+  }
+  bra.refresh();
+}
 
+unsigned char get_char_byte(char *pos) {
+  char val = *pos;
+  if ((val & 0b10000000) == 0) return 1;
+  else if ((val & 0b11100000) == 0b11000000) return 2;
+  else if ((val & 0b11110000) == 0b11100000) return 3;
+  else if ((val & 0b11111000) == 0b11110000) return 4;
+  else if ((val & 0b11111100) == 0b11111000) return 5;
+  else return 6;
+}
+
+void split_han_cho_jung_jong(char byte1, char byte2, char byte3, unsigned int &cho, unsigned int &jung, unsigned int &jong) {
+  unsigned int utf16 = (byte1 & 0b00001111) << 12 | (byte2 & 0b00111111) << 6 | (byte3 & 0b00111111);
+  unsigned int val = utf16 - 0xAC00;
+  unsigned char _jong = val % 28;
+  unsigned char _jung = (val % (28 * 21)) / 28;
+  unsigned char _cho = val / (28 * 21);
+  
+  cho = jung = jong = 0;
+  for (int i = 0; i < 19; i++) if (_cho == hangul2_cho[i]) cho = i;
+  for (int i = 0; i < 21; i++) if (_jung == hangul2_jung[i]) jung = i;
+  for (int i = 0; i < 28; i++) if (_jong == hangul2_jong[i]) jong = i;
+}
+
+// 테스트 함수들
+void test_all_dots() {
+  Serial.println("=== 모든 점 순차 테스트 시작 ===");
+  
+  // 각 셀의 각 점을 순차적으로 켜기
+  for (int cell = 0; cell < 3; cell++) {
+    Serial.print("셀 ");
+    Serial.print(cell + 1);
+    Serial.println(" 테스트");
+    
+    for (int dot = 0; dot < 6; dot++) {
+      bra.all_off();
+      bra.on(cell, dot);
+      bra.refresh();
+      Serial.print("  점 ");
+      Serial.print(dot + 1);
+      Serial.println(" 켜기");
+      delay(500);
+    }
+  }
+  
+  Serial.println("=== 테스트 완료 ===");
+}
+
+void test_cell_all(int cell) {
+  bra.all_off();
+  for (int dot = 0; dot < 6; dot++) {
+    bra.on(cell, dot);
+  }
+  bra.refresh();
+}
+
+void test_all_cells_all_dots() {
+  bra.all_off();
+  for (int cell = 0; cell < 3; cell++) {
+    for (int dot = 0; dot < 6; dot++) {
+      bra.on(cell, dot);
+    }
+  }
+  bra.refresh();
+}

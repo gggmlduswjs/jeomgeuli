@@ -313,17 +313,20 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
       let commandMatched = false;
       
       // 여러 대안이 있으면 모두 시도 (confidence 순서대로)
+      // alternatives를 한 번에 전달하여 route 함수에서 처리
       if (currentAlternatives && currentAlternatives.length > 0) {
-        for (const alt of currentAlternatives) {
-          const matched = onSpeech(alt.transcript);
-          if (matched) {
-            console.log(`[GlobalVoice] 대안 "${alt.transcript}"에서 명령 매칭 성공 - 즉시 처리`);
+        // alternatives를 confidence 순으로 정렬
+        const sortedAlts = [...currentAlternatives].sort((a, b) => b.confidence - a.confidence);
+        const matched = onSpeech(finalText, sortedAlts, location.pathname);
+        if (matched) {
+            console.log(`[GlobalVoice] alternatives를 활용한 명령 매칭 성공 - 즉시 처리`);
             commandMatched = true;
             lastBroadcastRef.current = { text: finalText, time: now };
             commandExecutedRef.current = now; // 명령어 실행 시간 기록
             
-            // 인식된 명령어 표시
-            setRecognizedCommand(`✓ 인식: ${alt.transcript}`);
+            // 인식된 명령어 표시 (가장 높은 confidence)
+            const bestAlt = sortedAlts[0];
+            setRecognizedCommand(`✓ 인식: ${bestAlt.transcript} (${(bestAlt.confidence * 100).toFixed(0)}%)`);
             setTimeout(() => setRecognizedCommand(null), 2000); // 2초 후 사라짐
             
             // 명령 매칭 시 즉시 마이크 끄기
@@ -341,11 +344,10 @@ export default function GlobalVoiceRecognition({ onTranscript }: GlobalVoiceReco
             }
             return; // 명령어는 즉시 처리하고 종료
           }
-        }
       }
       
-      // 기본 텍스트로도 명령어 시도
-      const matched = onSpeech(finalText);
+      // 기본 텍스트로도 명령어 시도 (alternatives 없이)
+      const matched = onSpeech(finalText, undefined, location.pathname);
       if (matched) {
         console.log(`[GlobalVoice] "${finalText}"에서 명령 매칭 성공 - 즉시 처리`);
         commandMatched = true;

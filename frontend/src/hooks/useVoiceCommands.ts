@@ -382,7 +382,18 @@ function similarity(s1: string, s2: string): number {
   return 0;
 }
 
+export interface RecognitionResult {
+  transcript: string;
+  confidence: number;
+}
+
 export default function useVoiceCommands(handlers: CommandHandlers) {
-  const onSpeech = useCallback((text: string): boolean => route(text, handlers), [handlers]);
+  const onSpeech = useCallback((
+    text: string, 
+    alternatives?: RecognitionResult[],
+    context?: string
+  ): boolean => {
+    return route(text, handlers, alternatives, context);
+  }, [handlers]);
   return { onSpeech };
 }
